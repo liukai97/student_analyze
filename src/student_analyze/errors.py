@@ -23,3 +23,7 @@ class InvalidTransitionError(StudentAnalyzeError):
 
 class AtomicCommitError(StudentAnalyzeError):
     """A validated artifact could not be committed atomically."""
+
+
+class ReviewRequiredError(StudentAnalyzeError):
+    """A visual decision is unresolved and must not advance the pipeline."""

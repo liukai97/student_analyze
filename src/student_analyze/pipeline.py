@@ -19,6 +19,7 @@ from student_analyze.errors import (
     CaseValidationError,
     ConfigurationError,
     InvalidTransitionError,
+    ReviewRequiredError,
     SourceIntegrityError,
 )
 from student_analyze.fingerprint import (
@@ -58,6 +59,33 @@ class StageResult:
     state: PipelineState
     artifacts: tuple[ArtifactReference, ...]
     reused: bool
+
+
+def build_stage_fingerprint(
+    *,
+    stage: PipelineStage,
+    model_type: type[BaseModel],
+    schema_id: str,
+    config: Mapping[str, Any],
+    versions: ImplementationVersions,
+    inputs: Sequence[Mapping[str, Any]],
+) -> tuple[str, dict[str, Any]]:
+    """Build the exact fingerprint configuration used by stage commits."""
+
+    fingerprint_config = {
+        **config,
+        "artifact_schema_id": schema_id,
+        "artifact_schema_sha256": digest_value(
+            model_type.model_json_schema(mode="validation")
+        ),
+    }
+    fingerprint = compute_stage_fingerprint(
+        stage,
+        inputs=inputs,
+        config=fingerprint_config,
+        versions=versions,
+    )
+    return fingerprint, fingerprint_config
 
 
 def ingest_case(
@@ -235,19 +263,21 @@ def commit_stage_artifact(
     manifest, state = verify_case(case_dir)
     if stage == PipelineStage.INGESTED:
         raise InvalidTransitionError("ingested is completed only by ingest_case")
+    if stage == PipelineStage.PAGES_READY:
+        from student_analyze.page_models import PageManifest
+
+        if model_type is not PageManifest or schema_id != "page_manifest.schema.json":
+            raise CaseValidationError(
+                "pages_ready can only be completed with the production PageManifest contract"
+            )
     _validate_transition(state, stage, force=force)
-    fingerprint_config = {
-        **config,
-        "artifact_schema_id": schema_id,
-        "artifact_schema_sha256": digest_value(
-            model_type.model_json_schema(mode="validation")
-        ),
-    }
-    stage_fingerprint = compute_stage_fingerprint(
-        stage,
-        inputs=inputs,
-        config=fingerprint_config,
+    stage_fingerprint, fingerprint_config = build_stage_fingerprint(
+        stage=stage,
+        model_type=model_type,
+        schema_id=schema_id,
+        config=config,
         versions=versions,
+        inputs=inputs,
     )
 
     existing = next(
@@ -264,6 +294,14 @@ def commit_stage_artifact(
         )
 
     validated = validate_payload(model_type, payload)
+    if stage == PipelineStage.PAGES_READY:
+        if validated.requires_review:
+            raise ReviewRequiredError(
+                "page manifest requires review and cannot complete pages_ready"
+            )
+        from student_analyze.page_verification import verify_page_outputs
+
+        verify_page_outputs(case_dir, manifest, validated)
 
     started_at = _now()
     run_id = _new_run_id()
@@ -357,6 +395,36 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
     verify_source_assets(manifest.source_assets)
     for run in state.run_history:
         _verify_artifact_references(case_dir, run.artifacts)
+    page_completion = next(
+        (
+            completion
+            for completion in state.completed_stages
+            if completion.stage == PipelineStage.PAGES_READY
+        ),
+        None,
+    )
+    if page_completion is not None:
+        page_references = [
+            reference
+            for reference in page_completion.artifacts
+            if reference.schema_id == "page_manifest.schema.json"
+        ]
+        if len(page_references) != 1:
+            raise CaseValidationError(
+                "pages_ready must have exactly one active page manifest"
+            )
+        from student_analyze.page_verification import (
+            read_page_manifest,
+            verify_page_outputs,
+        )
+
+        reference = page_references[0]
+        page_manifest = read_page_manifest(case_dir / reference.relative_path)
+        if page_manifest.stage_fingerprint != page_completion.stage_fingerprint:
+            raise CaseValidationError(
+                "page manifest stage fingerprint differs from pipeline state"
+            )
+        verify_page_outputs(case_dir, manifest, page_manifest)
     return manifest, state
 
 

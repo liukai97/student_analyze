@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
-from student_analyze.atomic import atomic_write_model
+from student_analyze.atomic import atomic_write_bytes, atomic_write_model
 from student_analyze.errors import AtomicCommitError
 
 
@@ -30,4 +30,26 @@ def test_interruption_before_replace_leaves_previous_file_intact(tmp_path: Path)
         )
 
     assert destination.read_text(encoding="utf-8") == '{"value": 1}\n'
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_binary_interruption_before_replace_leaves_previous_file_intact(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "page.jpg"
+    destination.write_bytes(b"previous")
+
+    def interrupt(event: str) -> None:
+        assert event == "after_temporary_validation"
+        raise RuntimeError("stop before binary replace")
+
+    with pytest.raises(AtomicCommitError, match="stop before binary replace"):
+        atomic_write_bytes(
+            destination,
+            b"replacement",
+            validator=lambda _: None,
+            interrupt_hook=interrupt,
+        )
+
+    assert destination.read_bytes() == b"previous"
     assert not list(tmp_path.glob("*.tmp"))

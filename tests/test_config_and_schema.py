@@ -28,6 +28,7 @@ def test_toml_config_is_read_and_normalized(tmp_path: Path) -> None:
     assert config.cases_dir == tmp_path / "output"
     assert config.log_level == "DEBUG"
     assert config.source_extensions == (".jpg", ".png")
+    assert config.jpeg_quality == 95
 
 
 def test_unknown_config_key_is_rejected(tmp_path: Path) -> None:
@@ -35,6 +36,17 @@ def test_unknown_config_key_is_rejected(tmp_path: Path) -> None:
     config_path.write_text("[student_analyze]\nunknown = true\n", encoding="utf-8")
 
     with pytest.raises(ConfigurationError, match="unknown config keys"):
+        load_config(config_path)
+
+
+def test_invalid_jpeg_quality_is_rejected(tmp_path: Path) -> None:
+    config_path = tmp_path / "settings.toml"
+    config_path.write_text(
+        "[student_analyze]\njpeg_quality = 101\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="jpeg_quality"):
         load_config(config_path)
 
 

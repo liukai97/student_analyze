@@ -10,6 +10,7 @@ import sys
 
 from student_analyze.config import load_config
 from student_analyze.errors import StudentAnalyzeError
+from student_analyze.image_preprocess import load_page_decisions, prepare_logical_pages
 from student_analyze.pipeline import ingest_case, verify_case
 from student_analyze.schema import SCHEMA_MODELS, write_schemas
 
@@ -30,6 +31,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify = subparsers.add_parser("verify", help="verify source and artifact integrity")
     verify.add_argument("case_dir", type=Path)
+
+    pages = subparsers.add_parser(
+        "pages", help="generate logical pages from reviewed visual decisions"
+    )
+    pages.add_argument("case_dir", type=Path)
+    pages.add_argument("decisions", type=Path)
+    pages.add_argument("--force", action="store_true", help="preserve a new page run")
+    pages.add_argument("--json", action="store_true", help="emit a machine-readable result")
 
     schema = subparsers.add_parser("schema", help="generate JSON Schemas from Pydantic")
     schema.add_argument("--output-dir", type=Path, default=Path("schemas"))
@@ -78,6 +87,32 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     f"verified {manifest.case_id}: stage={state.current_stage.value}, "
                     f"assets={len(manifest.source_assets)}, runs={len(state.run_history)}"
+                )
+            return 0
+
+        if args.command == "pages":
+            decisions = load_page_decisions(args.decisions)
+            result = prepare_logical_pages(
+                args.case_dir,
+                decisions,
+                config,
+                force=args.force,
+            )
+            payload = {
+                "case_id": result.manifest.case_id,
+                "case_dir": str(result.case_dir),
+                "current_stage": result.state.current_stage.value,
+                "logical_pages": len(result.manifest.pages),
+                "requires_review": result.manifest.requires_review,
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "completed"
+                print(
+                    f"pages {action}: {payload['case_id']}, "
+                    f"logical_pages={payload['logical_pages']}"
                 )
             return 0
 

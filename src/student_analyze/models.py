@@ -41,6 +41,10 @@ class ImplementationVersions(StrictModel):
     code: str = Field(min_length=1)
     base_schema: Literal[SCHEMA_VERSION] = SCHEMA_VERSION
     config: str = Field(min_length=1)
+    model: str | None = None
+    prompt: str | None = None
+    skill: str | None = None
+    tools: dict[str, str] = Field(default_factory=dict)
 
 
 class PrivacyFlags(StrictModel):

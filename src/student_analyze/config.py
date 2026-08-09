@@ -27,11 +27,21 @@ class AppConfig:
     cases_dir: Path = Path("cases")
     log_level: str = "INFO"
     source_extensions: tuple[str, ...] = DEFAULT_EXTENSIONS
+    jpeg_quality: int = 95
 
     def fingerprint_payload(self) -> dict[str, object]:
         return {
             "config_version": self.config_version,
             "source_extensions": list(self.source_extensions),
+        }
+
+    def page_fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "jpeg_quality": self.jpeg_quality,
+            "output_format": "JPEG",
+            "jpeg_subsampling": 0,
+            "exif_transpose": False,
         }
 
 
@@ -52,6 +62,7 @@ def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> A
             "cases_dir",
             "log_level",
             "source_extensions",
+            "jpeg_quality",
         }
         if unknown:
             raise ConfigurationError(f"unknown config keys: {', '.join(sorted(unknown))}")
@@ -60,6 +71,7 @@ def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> A
         configured_cases = section.get("cases_dir", str(config.cases_dir))
         log_level = section.get("log_level", config.log_level)
         extensions = section.get("source_extensions", list(config.source_extensions))
+        jpeg_quality = section.get("jpeg_quality", config.jpeg_quality)
         if not isinstance(config_version, str) or not config_version:
             raise ConfigurationError("config_version must be a non-empty string")
         if not isinstance(configured_cases, str) or not configured_cases:
@@ -70,6 +82,10 @@ def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> A
             isinstance(item, str) and item for item in extensions
         ):
             raise ConfigurationError("source_extensions must be a non-empty string array")
+        if not isinstance(jpeg_quality, int) or isinstance(jpeg_quality, bool):
+            raise ConfigurationError("jpeg_quality must be an integer")
+        if not 1 <= jpeg_quality <= 100:
+            raise ConfigurationError("jpeg_quality must be between 1 and 100")
 
         configured_path = Path(configured_cases)
         if not configured_path.is_absolute():
@@ -80,6 +96,7 @@ def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> A
             cases_dir=configured_path,
             log_level=log_level.upper(),
             source_extensions=normalized_extensions,
+            jpeg_quality=jpeg_quality,
         )
 
     if cases_dir is not None:
