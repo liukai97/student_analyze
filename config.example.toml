@@ -1,0 +1,5 @@
+[student_analyze]
+config_version = "1"
+cases_dir = "cases"
+log_level = "INFO"
+source_extensions = [".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".pdf"]

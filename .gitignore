@@ -1,0 +1,6 @@
+raw_exam/
+__pycache__/
+*.py[cod]
+evals/
+schemas/
+*.db

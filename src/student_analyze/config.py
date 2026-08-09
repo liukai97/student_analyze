@@ -1,0 +1,92 @@
+"""Small TOML configuration layer for the local CLI."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from pathlib import Path
+import tomllib
+
+from student_analyze.errors import ConfigurationError
+
+
+DEFAULT_EXTENSIONS = (
+    ".jpeg",
+    ".jpg",
+    ".pdf",
+    ".png",
+    ".tif",
+    ".tiff",
+    ".webp",
+)
+VALID_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
+
+
+@dataclass(frozen=True, slots=True)
+class AppConfig:
+    config_version: str = "1"
+    cases_dir: Path = Path("cases")
+    log_level: str = "INFO"
+    source_extensions: tuple[str, ...] = DEFAULT_EXTENSIONS
+
+    def fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "source_extensions": list(self.source_extensions),
+        }
+
+
+def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> AppConfig:
+    config = AppConfig()
+    if path is not None:
+        try:
+            with path.open("rb") as handle:
+                parsed = tomllib.load(handle)
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            raise ConfigurationError(f"cannot read config {path}: {exc}") from exc
+
+        section = parsed.get("student_analyze")
+        if not isinstance(section, dict):
+            raise ConfigurationError("config must contain a [student_analyze] table")
+        unknown = set(section) - {
+            "config_version",
+            "cases_dir",
+            "log_level",
+            "source_extensions",
+        }
+        if unknown:
+            raise ConfigurationError(f"unknown config keys: {', '.join(sorted(unknown))}")
+
+        config_version = section.get("config_version", config.config_version)
+        configured_cases = section.get("cases_dir", str(config.cases_dir))
+        log_level = section.get("log_level", config.log_level)
+        extensions = section.get("source_extensions", list(config.source_extensions))
+        if not isinstance(config_version, str) or not config_version:
+            raise ConfigurationError("config_version must be a non-empty string")
+        if not isinstance(configured_cases, str) or not configured_cases:
+            raise ConfigurationError("cases_dir must be a non-empty string")
+        if not isinstance(log_level, str) or log_level.upper() not in VALID_LOG_LEVELS:
+            raise ConfigurationError("log_level must be a standard Python log level")
+        if not isinstance(extensions, list) or not extensions or not all(
+            isinstance(item, str) and item for item in extensions
+        ):
+            raise ConfigurationError("source_extensions must be a non-empty string array")
+
+        configured_path = Path(configured_cases)
+        if not configured_path.is_absolute():
+            configured_path = path.parent / configured_path
+        normalized_extensions = _normalize_extensions(extensions)
+        config = AppConfig(
+            config_version=config_version,
+            cases_dir=configured_path,
+            log_level=log_level.upper(),
+            source_extensions=normalized_extensions,
+        )
+
+    if cases_dir is not None:
+        config = replace(config, cases_dir=cases_dir)
+    return config
+
+
+def _normalize_extensions(extensions: list[str]) -> tuple[str, ...]:
+    normalized = {item.lower() if item.startswith(".") else f".{item.lower()}" for item in extensions}
+    return tuple(sorted(normalized))
