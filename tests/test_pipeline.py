@@ -116,11 +116,11 @@ def test_stage_cannot_skip_required_predecessor(tmp_path: Path) -> None:
     with pytest.raises(InvalidTransitionError, match="required previous stage"):
         commit_stage_artifact(
             result.case_dir,
-            stage=PipelineStage.MAPPED,
-            artifact_name="mapping.json",
+            stage=PipelineStage.MASTER_READY,
+            artifact_name="master.json",
             payload={"schema_version": "1.0.0", "nodes": []},
             model_type=MappingStub,
-            schema_id="mapping.schema.json",
+            schema_id="master.schema.json",
             config=config.fingerprint_payload(),
             versions=result.manifest.versions,
             inputs=[],

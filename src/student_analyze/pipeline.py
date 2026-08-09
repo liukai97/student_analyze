@@ -270,6 +270,13 @@ def commit_stage_artifact(
             raise CaseValidationError(
                 "pages_ready can only be completed with the production PageManifest contract"
             )
+    if stage == PipelineStage.MAPPED:
+        from student_analyze.document_models import DocumentGraph
+
+        if model_type is not DocumentGraph or schema_id != "document_graph.schema.json":
+            raise CaseValidationError(
+                "mapped can only be completed with the production DocumentGraph contract"
+            )
     _validate_transition(state, stage, force=force)
     stage_fingerprint, fingerprint_config = build_stage_fingerprint(
         stage=stage,
@@ -395,6 +402,8 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
     verify_source_assets(manifest.source_assets)
     for run in state.run_history:
         _verify_artifact_references(case_dir, run.artifacts)
+    active_page_manifest = None
+    active_page_manifest_path = None
     page_completion = next(
         (
             completion
@@ -419,12 +428,51 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
         )
 
         reference = page_references[0]
-        page_manifest = read_page_manifest(case_dir / reference.relative_path)
-        if page_manifest.stage_fingerprint != page_completion.stage_fingerprint:
+        active_page_manifest_path = case_dir / reference.relative_path
+        active_page_manifest = read_page_manifest(active_page_manifest_path)
+        if active_page_manifest.stage_fingerprint != page_completion.stage_fingerprint:
             raise CaseValidationError(
                 "page manifest stage fingerprint differs from pipeline state"
             )
-        verify_page_outputs(case_dir, manifest, page_manifest)
+        verify_page_outputs(case_dir, manifest, active_page_manifest)
+
+    mapping_completion = next(
+        (
+            completion
+            for completion in state.completed_stages
+            if completion.stage == PipelineStage.MAPPED
+        ),
+        None,
+    )
+    if mapping_completion is not None:
+        if active_page_manifest is None or active_page_manifest_path is None:
+            raise CaseValidationError("mapped requires an active page manifest")
+        graph_references = [
+            reference
+            for reference in mapping_completion.artifacts
+            if reference.schema_id == "document_graph.schema.json"
+        ]
+        if len(graph_references) != 1:
+            raise CaseValidationError(
+                "mapped must have exactly one active document graph"
+            )
+        from student_analyze.document_mapper import (
+            read_document_graph,
+            verify_document_graph,
+        )
+
+        graph_reference = graph_references[0]
+        graph = read_document_graph(case_dir / graph_reference.relative_path)
+        if graph.stage_fingerprint != mapping_completion.stage_fingerprint:
+            raise CaseValidationError(
+                "document graph stage fingerprint differs from pipeline state"
+            )
+        page_manifest_sha256, _ = artifact_digest(active_page_manifest_path)
+        verify_document_graph(
+            graph,
+            active_page_manifest,
+            page_manifest_sha256=page_manifest_sha256,
+        )
     return manifest, state
 
 
