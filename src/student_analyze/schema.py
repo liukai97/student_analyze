@@ -13,12 +13,15 @@ from student_analyze.models import (
     PipelineState,
     SourceAsset,
 )
+from student_analyze.document_models import DocumentGraph, DocumentGraphDecisionSet
 from student_analyze.page_models import PageDecisionSet, PageManifest
 
 
 SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "artifact_reference.schema.json": ArtifactReference,
     "case_manifest.schema.json": CaseManifest,
+    "document_graph.schema.json": DocumentGraph,
+    "document_graph_decision.schema.json": DocumentGraphDecisionSet,
     "pipeline_state.schema.json": PipelineState,
     "page_decision.schema.json": PageDecisionSet,
     "page_manifest.schema.json": PageManifest,

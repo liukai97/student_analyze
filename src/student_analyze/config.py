@@ -44,6 +44,14 @@ class AppConfig:
             "exif_transpose": False,
         }
 
+    def mapping_fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "graph_id_strategy": "case-kind-decision-ref-sha256-v1",
+            "supersedes_direction": "newer_to_older",
+            "effective_version_strategy": "unique_unsuperseded_root-v1",
+        }
+
 
 def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> AppConfig:
     config = AppConfig()

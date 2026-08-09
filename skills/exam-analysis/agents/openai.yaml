@@ -1,0 +1,4 @@
+interface:
+  display_name: "Exam Analysis"
+  short_description: "Map exam pages, questions, versions, and evidence"
+  default_prompt: "Use $exam-analysis to classify these exam pages and produce evidence-backed document graph decisions."

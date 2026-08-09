@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 
 from student_analyze.config import load_config
+from student_analyze.document_mapper import load_document_decisions, map_documents
 from student_analyze.errors import StudentAnalyzeError
 from student_analyze.image_preprocess import load_page_decisions, prepare_logical_pages
 from student_analyze.pipeline import ingest_case, verify_case
@@ -39,6 +40,14 @@ def build_parser() -> argparse.ArgumentParser:
     pages.add_argument("decisions", type=Path)
     pages.add_argument("--force", action="store_true", help="preserve a new page run")
     pages.add_argument("--json", action="store_true", help="emit a machine-readable result")
+
+    mapping = subparsers.add_parser(
+        "map", help="build a document graph from reviewed semantic decisions"
+    )
+    mapping.add_argument("case_dir", type=Path)
+    mapping.add_argument("decisions", type=Path)
+    mapping.add_argument("--force", action="store_true", help="preserve a new mapping run")
+    mapping.add_argument("--json", action="store_true", help="emit a machine-readable result")
 
     schema = subparsers.add_parser("schema", help="generate JSON Schemas from Pydantic")
     schema.add_argument("--output-dir", type=Path, default=Path("schemas"))
@@ -113,6 +122,35 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     f"pages {action}: {payload['case_id']}, "
                     f"logical_pages={payload['logical_pages']}"
+                )
+            return 0
+
+        if args.command == "map":
+            decisions = load_document_decisions(args.decisions)
+            result = map_documents(
+                args.case_dir,
+                decisions,
+                config,
+                force=args.force,
+            )
+            payload = {
+                "case_id": result.graph.case_id,
+                "case_dir": str(result.case_dir),
+                "current_stage": result.state.current_stage.value,
+                "documents": len(result.graph.documents),
+                "questions": len(result.graph.questions),
+                "question_versions": len(result.graph.question_versions),
+                "unresolved_relations": len(result.graph.unresolved_relations),
+                "requires_review": result.graph.requires_review,
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "completed"
+                print(
+                    f"map {action}: {payload['case_id']}, "
+                    f"documents={payload['documents']}, questions={payload['questions']}"
                 )
             return 0
 
