@@ -52,6 +52,24 @@ class AppConfig:
             "effective_version_strategy": "unique_unsuperseded_root-v1",
         }
 
+    def master_input_fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "jpeg_quality": self.jpeg_quality,
+            "output_format": "JPEG",
+            "jpeg_subsampling": 0,
+            "crop_policy": "reviewed-printed-region-only-v1",
+            "routing_policy": "evidence-first-selective-blind-solve-v1",
+        }
+
+    def master_fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "answer_source_policy": "official-confirmed-teacher-independent-v1",
+            "approval_policy": "validated-source-or-independent-review-v1",
+            "conflict_policy": "explicit-review-no-silent-override-v1",
+        }
+
 
 def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> AppConfig:
     config = AppConfig()

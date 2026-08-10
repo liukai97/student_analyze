@@ -14,6 +14,15 @@ from student_analyze.models import (
     SourceAsset,
 )
 from student_analyze.document_models import DocumentGraph, DocumentGraphDecisionSet
+from student_analyze.exam_master_models import (
+    AnswerEvidenceDecisionSet,
+    ExamMaster,
+    ExamMasterDecisionSet,
+    ExamReviewDecisionSet,
+    QuestionReconstructionDecisionSet,
+    SolverInputDecisionSet,
+    SolverInputManifest,
+)
 from student_analyze.page_models import PageDecisionSet, PageManifest
 
 
@@ -22,10 +31,17 @@ SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "case_manifest.schema.json": CaseManifest,
     "document_graph.schema.json": DocumentGraph,
     "document_graph_decision.schema.json": DocumentGraphDecisionSet,
+    "answer_evidence_decision.schema.json": AnswerEvidenceDecisionSet,
+    "exam_master.schema.json": ExamMaster,
+    "exam_master_decision.schema.json": ExamMasterDecisionSet,
+    "exam_review_decision.schema.json": ExamReviewDecisionSet,
+    "question_reconstruction_decision.schema.json": QuestionReconstructionDecisionSet,
     "pipeline_state.schema.json": PipelineState,
     "page_decision.schema.json": PageDecisionSet,
     "page_manifest.schema.json": PageManifest,
     "source_asset.schema.json": SourceAsset,
+    "solver_input_decision.schema.json": SolverInputDecisionSet,
+    "solver_input_manifest.schema.json": SolverInputManifest,
 }
 SCHEMA_BASE_ID = "https://local.student-analyze/schemas/"
 
