@@ -277,6 +277,13 @@ def commit_stage_artifact(
             raise CaseValidationError(
                 "mapped can only be completed with the production DocumentGraph contract"
             )
+    if stage == PipelineStage.MASTER_READY:
+        from student_analyze.exam_master_models import ExamMaster
+
+        if model_type is not ExamMaster or schema_id != "exam_master.schema.json":
+            raise CaseValidationError(
+                "master_ready can only be completed with the production ExamMaster contract"
+            )
     _validate_transition(state, stage, force=force)
     stage_fingerprint, fingerprint_config = build_stage_fingerprint(
         stage=stage,
@@ -309,6 +316,10 @@ def commit_stage_artifact(
         from student_analyze.page_verification import verify_page_outputs
 
         verify_page_outputs(case_dir, manifest, validated)
+    if stage == PipelineStage.MASTER_READY and validated.requires_review:
+        raise ReviewRequiredError(
+            "Exam Master requires review and cannot complete master_ready"
+        )
 
     started_at = _now()
     run_id = _new_run_id()
@@ -436,6 +447,7 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
             )
         verify_page_outputs(case_dir, manifest, active_page_manifest)
 
+    active_document_graph = None
     mapping_completion = next(
         (
             completion
@@ -463,6 +475,7 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
 
         graph_reference = graph_references[0]
         graph = read_document_graph(case_dir / graph_reference.relative_path)
+        active_document_graph = graph
         if graph.stage_fingerprint != mapping_completion.stage_fingerprint:
             raise CaseValidationError(
                 "document graph stage fingerprint differs from pipeline state"
@@ -472,6 +485,47 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
             graph,
             active_page_manifest,
             page_manifest_sha256=page_manifest_sha256,
+        )
+
+    master_completion = next(
+        (
+            completion
+            for completion in state.completed_stages
+            if completion.stage == PipelineStage.MASTER_READY
+        ),
+        None,
+    )
+    if master_completion is not None:
+        if active_document_graph is None or mapping_completion is None:
+            raise CaseValidationError("master_ready requires an active document graph")
+        master_references = [
+            reference
+            for reference in master_completion.artifacts
+            if reference.schema_id == "exam_master.schema.json"
+        ]
+        if len(master_references) != 1:
+            raise CaseValidationError(
+                "master_ready must have exactly one active Exam Master"
+            )
+        from student_analyze.exam_master import read_exam_master, verify_exam_master
+
+        master_reference = master_references[0]
+        master = read_exam_master(case_dir / master_reference.relative_path)
+        if master.stage_fingerprint != master_completion.stage_fingerprint:
+            raise CaseValidationError(
+                "Exam Master stage fingerprint differs from pipeline state"
+            )
+        graph_reference = next(
+            reference
+            for reference in mapping_completion.artifacts
+            if reference.schema_id == "document_graph.schema.json"
+        )
+        graph_sha256, _ = artifact_digest(case_dir / graph_reference.relative_path)
+        verify_exam_master(
+            case_dir,
+            master,
+            active_document_graph,
+            graph_sha256=graph_sha256,
         )
     return manifest, state
 

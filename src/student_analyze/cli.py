@@ -11,6 +11,16 @@ import sys
 from student_analyze.config import load_config
 from student_analyze.document_mapper import load_document_decisions, map_documents
 from student_analyze.errors import StudentAnalyzeError
+from student_analyze.exam_master import (
+    build_exam_master,
+    load_answer_evidence_decisions,
+    load_exam_master_decisions,
+    load_exam_review_decisions,
+    load_question_reconstruction_decisions,
+    load_solver_input_decisions,
+    prepare_solver_inputs,
+    read_solver_input_manifest,
+)
 from student_analyze.image_preprocess import load_page_decisions, prepare_logical_pages
 from student_analyze.pipeline import ingest_case, verify_case
 from student_analyze.schema import SCHEMA_MODELS, write_schemas
@@ -48,6 +58,28 @@ def build_parser() -> argparse.ArgumentParser:
     mapping.add_argument("decisions", type=Path)
     mapping.add_argument("--force", action="store_true", help="preserve a new mapping run")
     mapping.add_argument("--json", action="store_true", help="emit a machine-readable result")
+
+    master_inputs = subparsers.add_parser(
+        "master-inputs", help="build reviewed question-only inputs for phase 4"
+    )
+    master_inputs.add_argument("case_dir", type=Path)
+    master_inputs.add_argument("evidence_decisions", type=Path)
+    master_inputs.add_argument("reconstruction_decisions", type=Path)
+    master_inputs.add_argument("crop_decisions", type=Path)
+    master_inputs.add_argument(
+        "--json", action="store_true", help="emit a machine-readable result"
+    )
+
+    master = subparsers.add_parser(
+        "master", help="compile reviewed phase 4 decisions into an Exam Master"
+    )
+    master.add_argument("case_dir", type=Path)
+    master.add_argument("evidence_decisions", type=Path)
+    master.add_argument("solver_manifest", type=Path)
+    master.add_argument("master_decisions", type=Path)
+    master.add_argument("review_decisions", type=Path)
+    master.add_argument("--force", action="store_true", help="preserve a new master run")
+    master.add_argument("--json", action="store_true", help="emit a machine-readable result")
 
     schema = subparsers.add_parser("schema", help="generate JSON Schemas from Pydantic")
     schema.add_argument("--output-dir", type=Path, default=Path("schemas"))
@@ -151,6 +183,73 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     f"map {action}: {payload['case_id']}, "
                     f"documents={payload['documents']}, questions={payload['questions']}"
+                )
+            return 0
+
+        if args.command == "master-inputs":
+            evidence = load_answer_evidence_decisions(args.evidence_decisions)
+            reconstructions = load_question_reconstruction_decisions(
+                args.reconstruction_decisions
+            )
+            crop_decisions = load_solver_input_decisions(args.crop_decisions)
+            result = prepare_solver_inputs(
+                args.case_dir,
+                evidence,
+                reconstructions,
+                crop_decisions,
+                config,
+            )
+            payload = {
+                "case_id": result.manifest.case_id,
+                "case_dir": str(result.case_dir),
+                "solver_input_manifest": str(result.manifest_path),
+                "questions": len(result.manifest.questions),
+                "solve_questions": sum(
+                    item.task.value == "reconstruct_and_solve"
+                    for item in result.manifest.questions
+                ),
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "completed"
+                print(
+                    f"master-inputs {action}: {payload['case_id']}, "
+                    f"solve_questions={payload['solve_questions']}"
+                )
+                print(payload["solver_input_manifest"])
+            return 0
+
+        if args.command == "master":
+            evidence = load_answer_evidence_decisions(args.evidence_decisions)
+            solver_manifest = read_solver_input_manifest(args.solver_manifest)
+            master_decisions = load_exam_master_decisions(args.master_decisions)
+            review_decisions = load_exam_review_decisions(args.review_decisions)
+            result = build_exam_master(
+                args.case_dir,
+                evidence,
+                solver_manifest,
+                master_decisions,
+                review_decisions,
+                config,
+                force=args.force,
+            )
+            payload = {
+                "case_id": result.master.case_id,
+                "case_dir": str(result.case_dir),
+                "current_stage": result.state.current_stage.value,
+                "questions": len(result.master.questions),
+                "requires_review": result.master.requires_review,
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "completed"
+                print(
+                    f"master {action}: {payload['case_id']}, "
+                    f"questions={payload['questions']}"
                 )
             return 0
 
