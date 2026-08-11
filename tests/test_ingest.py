@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -65,6 +66,19 @@ def test_source_change_after_ingestion_is_rejected(tmp_path: Path) -> None:
         ingest_case(source, _config(tmp_path))
     with pytest.raises(SourceIntegrityError, match="source asset changed"):
         verify_case(result.case_dir)
+
+
+def test_mtime_only_change_does_not_invalidate_identical_source(tmp_path: Path) -> None:
+    source = _source(tmp_path)
+    result = ingest_case(source, _config(tmp_path))
+    source_path = source / "1.jpg"
+    original = source_path.stat()
+    os.utime(
+        source_path,
+        ns=(original.st_atime_ns, original.st_mtime_ns + 1_000_000_000),
+    )
+
+    verify_case(result.case_dir)
 
 
 def test_interruption_after_manifest_recovers_on_retry(tmp_path: Path) -> None:

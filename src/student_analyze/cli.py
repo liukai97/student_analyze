@@ -24,6 +24,15 @@ from student_analyze.exam_master import (
 from student_analyze.image_preprocess import load_page_decisions, prepare_logical_pages
 from student_analyze.pipeline import ingest_case, verify_case
 from student_analyze.schema import SCHEMA_MODELS, write_schemas
+from student_analyze.submission import (
+    build_submission,
+    load_submission_mapping_decisions,
+    load_submission_structure_manifest,
+    load_submission_transcription_decisions,
+    prepare_submission_inputs,
+    prepare_submission_structure,
+    read_submission_input_manifest,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,6 +89,40 @@ def build_parser() -> argparse.ArgumentParser:
     master.add_argument("review_decisions", type=Path)
     master.add_argument("--force", action="store_true", help="preserve a new master run")
     master.add_argument("--json", action="store_true", help="emit a machine-readable result")
+
+    submission_context = subparsers.add_parser(
+        "submission-context",
+        help="build an answer-key-redacted structure manifest for phase 5",
+    )
+    submission_context.add_argument("case_dir", type=Path)
+    submission_context.add_argument(
+        "--json", action="store_true", help="emit a machine-readable result"
+    )
+
+    submission_inputs = subparsers.add_parser(
+        "submission-inputs",
+        help="validate response mappings and create high-detail transcription crops",
+    )
+    submission_inputs.add_argument("case_dir", type=Path)
+    submission_inputs.add_argument("structure_manifest", type=Path)
+    submission_inputs.add_argument("mapping_decisions", type=Path)
+    submission_inputs.add_argument(
+        "--json", action="store_true", help="emit a machine-readable result"
+    )
+
+    submission = subparsers.add_parser(
+        "submission",
+        help="compile faithful transcription decisions into a phase-5 Submission",
+    )
+    submission.add_argument("case_dir", type=Path)
+    submission.add_argument("input_manifest", type=Path)
+    submission.add_argument("transcription_decisions", type=Path)
+    submission.add_argument(
+        "--force", action="store_true", help="preserve a new submission run"
+    )
+    submission.add_argument(
+        "--json", action="store_true", help="emit a machine-readable result"
+    )
 
     schema = subparsers.add_parser("schema", help="generate JSON Schemas from Pydantic")
     schema.add_argument("--output-dir", type=Path, default=Path("schemas"))
@@ -250,6 +293,87 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     f"master {action}: {payload['case_id']}, "
                     f"questions={payload['questions']}"
+                )
+            return 0
+
+        if args.command == "submission-context":
+            result = prepare_submission_structure(args.case_dir, config)
+            payload = {
+                "case_id": result.manifest.case_id,
+                "case_dir": str(result.case_dir),
+                "structure_manifest": str(result.manifest_path),
+                "questions": len(result.manifest.questions),
+                "navigation_pages": len(result.manifest.pages),
+                "known_annotations": len(result.manifest.known_annotations),
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "completed"
+                print(
+                    f"submission-context {action}: {payload['case_id']}, "
+                    f"questions={payload['questions']}"
+                )
+                print(payload["structure_manifest"])
+            return 0
+
+        if args.command == "submission-inputs":
+            structure = load_submission_structure_manifest(args.structure_manifest)
+            mappings = load_submission_mapping_decisions(args.mapping_decisions)
+            result = prepare_submission_inputs(
+                args.case_dir,
+                structure,
+                mappings,
+                config,
+            )
+            payload = {
+                "case_id": result.manifest.case_id,
+                "case_dir": str(result.case_dir),
+                "submission_input_manifest": str(result.manifest_path),
+                "response_units": len(result.manifest.items),
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "completed"
+                print(
+                    f"submission-inputs {action}: {payload['case_id']}, "
+                    f"response_units={payload['response_units']}"
+                )
+                print(payload["submission_input_manifest"])
+            return 0
+
+        if args.command == "submission":
+            input_manifest = read_submission_input_manifest(args.input_manifest)
+            transcriptions = load_submission_transcription_decisions(
+                args.transcription_decisions
+            )
+            result = build_submission(
+                args.case_dir,
+                input_manifest,
+                transcriptions,
+                config,
+                force=args.force,
+            )
+            payload = {
+                "case_id": result.submission.case_id,
+                "case_dir": str(result.case_dir),
+                "current_stage": result.state.current_stage.value,
+                "response_units": len(result.submission.items),
+                "review_items": len(result.submission.review_items),
+                "requires_review": result.submission.requires_review,
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "completed"
+                print(
+                    f"submission {action}: {payload['case_id']}, "
+                    f"response_units={payload['response_units']}, "
+                    f"review_items={payload['review_items']}"
                 )
             return 0
 

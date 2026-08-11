@@ -53,8 +53,6 @@ def verify_source_assets(assets: Iterable[SourceAsset]) -> None:
             differences.append("sha256")
         if actual.size_bytes != expected.size_bytes:
             differences.append("size_bytes")
-        if actual.modified_time_ns != expected.modified_time_ns:
-            differences.append("modified_time_ns")
         if differences:
             raise SourceIntegrityError(
                 f"source asset changed ({', '.join(differences)}): {path}"

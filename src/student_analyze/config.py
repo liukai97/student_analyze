@@ -70,6 +70,30 @@ class AppConfig:
             "conflict_policy": "explicit-review-no-silent-override-v1",
         }
 
+    def submission_context_fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "redaction_policy": "structure-only-no-answer-rubric-solution-v1",
+            "navigation_policy": "answer-question-and-scratch-pages-v1",
+        }
+
+    def submission_input_fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "jpeg_quality": self.jpeg_quality,
+            "output_format": "JPEG",
+            "jpeg_subsampling": 0,
+            "crop_policy": "validated-response-unit-original-detail-v1",
+        }
+
+    def submission_fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "source_priority": "answer-sheet-over-scratch-v1",
+            "normalization_policy": "format-only-no-semantic-expansion-v1",
+            "review_policy": "low-confidence-alternatives-role-conflict-v1",
+        }
+
 
 def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> AppConfig:
     config = AppConfig()
