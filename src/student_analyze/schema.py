@@ -24,6 +24,13 @@ from student_analyze.exam_master_models import (
     SolverInputManifest,
 )
 from student_analyze.page_models import PageDecisionSet, PageManifest
+from student_analyze.submission_models import (
+    Submission,
+    SubmissionInputManifest,
+    SubmissionMappingDecisionSet,
+    SubmissionStructureManifest,
+    SubmissionTranscriptionDecisionSet,
+)
 
 
 SCHEMA_MODELS: dict[str, type[BaseModel]] = {
@@ -42,6 +49,11 @@ SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "source_asset.schema.json": SourceAsset,
     "solver_input_decision.schema.json": SolverInputDecisionSet,
     "solver_input_manifest.schema.json": SolverInputManifest,
+    "submission.schema.json": Submission,
+    "submission_input_manifest.schema.json": SubmissionInputManifest,
+    "submission_mapping_decision.schema.json": SubmissionMappingDecisionSet,
+    "submission_structure_manifest.schema.json": SubmissionStructureManifest,
+    "submission_transcription_decision.schema.json": SubmissionTranscriptionDecisionSet,
 }
 SCHEMA_BASE_ID = "https://local.student-analyze/schemas/"
 

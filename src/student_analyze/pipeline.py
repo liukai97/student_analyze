@@ -263,6 +263,7 @@ def commit_stage_artifact(
     manifest, state = verify_case(case_dir)
     if stage == PipelineStage.INGESTED:
         raise InvalidTransitionError("ingested is completed only by ingest_case")
+    _validate_transition(state, stage, force=force)
     if stage == PipelineStage.PAGES_READY:
         from student_analyze.page_models import PageManifest
 
@@ -284,7 +285,13 @@ def commit_stage_artifact(
             raise CaseValidationError(
                 "master_ready can only be completed with the production ExamMaster contract"
             )
-    _validate_transition(state, stage, force=force)
+    if stage == PipelineStage.SUBMISSION_READY:
+        from student_analyze.submission_models import Submission
+
+        if model_type is not Submission or schema_id != "submission.schema.json":
+            raise CaseValidationError(
+                "submission_ready can only be completed with the production Submission contract"
+            )
     stage_fingerprint, fingerprint_config = build_stage_fingerprint(
         stage=stage,
         model_type=model_type,
@@ -487,6 +494,8 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
             page_manifest_sha256=page_manifest_sha256,
         )
 
+    active_exam_master = None
+    active_exam_master_path = None
     master_completion = next(
         (
             completion
@@ -510,7 +519,9 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
         from student_analyze.exam_master import read_exam_master, verify_exam_master
 
         master_reference = master_references[0]
-        master = read_exam_master(case_dir / master_reference.relative_path)
+        active_exam_master_path = case_dir / master_reference.relative_path
+        master = read_exam_master(active_exam_master_path)
+        active_exam_master = master
         if master.stage_fingerprint != master_completion.stage_fingerprint:
             raise CaseValidationError(
                 "Exam Master stage fingerprint differs from pipeline state"
@@ -526,6 +537,62 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
             master,
             active_document_graph,
             graph_sha256=graph_sha256,
+        )
+
+    submission_completion = next(
+        (
+            completion
+            for completion in state.completed_stages
+            if completion.stage == PipelineStage.SUBMISSION_READY
+        ),
+        None,
+    )
+    if submission_completion is not None:
+        if (
+            active_document_graph is None
+            or active_page_manifest is None
+            or active_page_manifest_path is None
+            or active_exam_master is None
+            or active_exam_master_path is None
+            or mapping_completion is None
+        ):
+            raise CaseValidationError(
+                "submission_ready requires page, graph, and Exam Master artifacts"
+            )
+        submission_references = [
+            reference
+            for reference in submission_completion.artifacts
+            if reference.schema_id == "submission.schema.json"
+        ]
+        if len(submission_references) != 1:
+            raise CaseValidationError(
+                "submission_ready must have exactly one active Submission"
+            )
+        from student_analyze.submission import read_submission, verify_submission
+
+        submission_reference = submission_references[0]
+        submission = read_submission(case_dir / submission_reference.relative_path)
+        if submission.stage_fingerprint != submission_completion.stage_fingerprint:
+            raise CaseValidationError(
+                "Submission stage fingerprint differs from pipeline state"
+            )
+        graph_reference = next(
+            reference
+            for reference in mapping_completion.artifacts
+            if reference.schema_id == "document_graph.schema.json"
+        )
+        graph_sha256, _ = artifact_digest(case_dir / graph_reference.relative_path)
+        page_manifest_sha256, _ = artifact_digest(active_page_manifest_path)
+        exam_master_sha256, _ = artifact_digest(active_exam_master_path)
+        verify_submission(
+            case_dir,
+            submission,
+            active_document_graph,
+            active_page_manifest,
+            active_exam_master,
+            graph_sha256=graph_sha256,
+            page_manifest_sha256=page_manifest_sha256,
+            exam_master_sha256=exam_master_sha256,
         )
     return manifest, state
 
