@@ -1,4 +1,4 @@
-"""Generate deterministic JSON Schemas from the phase 1 Pydantic models."""
+"""Generate deterministic JSON Schemas from production Pydantic models."""
 
 from __future__ import annotations
 
@@ -24,6 +24,13 @@ from student_analyze.exam_master_models import (
     SolverInputManifest,
 )
 from student_analyze.page_models import PageDecisionSet, PageManifest
+from student_analyze.grading_models import (
+    Grading,
+    GradingDecisionSet,
+    GradingInputManifest,
+    GradingReviewDecisionSet,
+    GradingReviewManifest,
+)
 from student_analyze.submission_models import (
     Submission,
     SubmissionInputManifest,
@@ -54,6 +61,11 @@ SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "submission_mapping_decision.schema.json": SubmissionMappingDecisionSet,
     "submission_structure_manifest.schema.json": SubmissionStructureManifest,
     "submission_transcription_decision.schema.json": SubmissionTranscriptionDecisionSet,
+    "grading.schema.json": Grading,
+    "grading_decision.schema.json": GradingDecisionSet,
+    "grading_input_manifest.schema.json": GradingInputManifest,
+    "grading_review_decision.schema.json": GradingReviewDecisionSet,
+    "grading_review_manifest.schema.json": GradingReviewManifest,
 }
 SCHEMA_BASE_ID = "https://local.student-analyze/schemas/"
 

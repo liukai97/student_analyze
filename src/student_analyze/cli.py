@@ -1,4 +1,4 @@
-"""Command-line interface for phase 1 operations."""
+"""Command-line interface for the local exam-analysis pipeline."""
 
 from __future__ import annotations
 
@@ -22,6 +22,15 @@ from student_analyze.exam_master import (
     read_solver_input_manifest,
 )
 from student_analyze.image_preprocess import load_page_decisions, prepare_logical_pages
+from student_analyze.grading import (
+    build_grading,
+    finalize_grading_review,
+    load_grading_decisions,
+    load_grading_input_manifest,
+    load_grading_review_decisions,
+    prepare_grading_context,
+    prepare_grading_review,
+)
 from student_analyze.pipeline import ingest_case, verify_case
 from student_analyze.schema import SCHEMA_MODELS, write_schemas
 from student_analyze.submission import (
@@ -123,6 +132,43 @@ def build_parser() -> argparse.ArgumentParser:
     submission.add_argument(
         "--json", action="store_true", help="emit a machine-readable result"
     )
+
+    grading_context = subparsers.add_parser(
+        "grading-context",
+        help="route reviewed responses to deterministic or LLM grading",
+    )
+    grading_context.add_argument("case_dir", type=Path)
+    grading_context.add_argument(
+        "--json", action="store_true", help="emit a machine-readable result"
+    )
+
+    grade = subparsers.add_parser(
+        "grade",
+        help="combine deterministic grading and rubric decisions",
+    )
+    grade.add_argument("case_dir", type=Path)
+    grade.add_argument("input_manifest", type=Path)
+    grade.add_argument("grading_decisions", type=Path)
+    grade.add_argument("--force", action="store_true", help="preserve a new grading run")
+    grade.add_argument("--json", action="store_true", help="emit a machine-readable result")
+
+    grading_review = subparsers.add_parser(
+        "grading-review",
+        help="render the local review packet for disputed grading items",
+    )
+    grading_review.add_argument("case_dir", type=Path)
+    grading_review.add_argument(
+        "--json", action="store_true", help="emit a machine-readable result"
+    )
+
+    review = subparsers.add_parser(
+        "review",
+        help="apply complete human grading decisions",
+    )
+    review.add_argument("case_dir", type=Path)
+    review.add_argument("review_decisions", type=Path)
+    review.add_argument("--force", action="store_true", help="preserve a new review run")
+    review.add_argument("--json", action="store_true", help="emit a machine-readable result")
 
     schema = subparsers.add_parser("schema", help="generate JSON Schemas from Pydantic")
     schema.add_argument("--output-dir", type=Path, default=Path("schemas"))
@@ -374,6 +420,116 @@ def main(argv: list[str] | None = None) -> int:
                     f"submission {action}: {payload['case_id']}, "
                     f"response_units={payload['response_units']}, "
                     f"review_items={payload['review_items']}"
+                )
+            return 0
+
+        if args.command == "grading-context":
+            result = prepare_grading_context(args.case_dir, config)
+            payload = {
+                "case_id": result.manifest.case_id,
+                "case_dir": str(result.case_dir),
+                "grading_input_manifest": str(result.manifest_path),
+                "targets": len(result.manifest.targets),
+                "auto_objective": sum(
+                    item.route.value == "auto_objective"
+                    for item in result.manifest.targets
+                ),
+                "auto_blank": sum(
+                    item.route.value == "auto_blank"
+                    for item in result.manifest.targets
+                ),
+                "llm_targets": len(result.manifest.llm_target_ids),
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "completed"
+                print(
+                    f"grading-context {action}: {payload['case_id']}, "
+                    f"auto_objective={payload['auto_objective']}, "
+                    f"auto_blank={payload['auto_blank']}, "
+                    f"llm_targets={payload['llm_targets']}"
+                )
+                print(payload["grading_input_manifest"])
+            return 0
+
+        if args.command == "grade":
+            input_manifest = load_grading_input_manifest(args.input_manifest)
+            decisions = load_grading_decisions(args.grading_decisions)
+            result = build_grading(
+                args.case_dir,
+                input_manifest,
+                decisions,
+                config,
+                force=args.force,
+            )
+            payload = {
+                "case_id": result.grading.case_id,
+                "case_dir": str(result.case_dir),
+                "current_stage": result.state.current_stage.value,
+                "provisional_score": result.grading.provisional_score,
+                "max_score": result.grading.max_score,
+                "review_items": len(result.grading.review_items),
+                "requires_review": result.grading.requires_review,
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "completed"
+                print(
+                    f"grade {action}: {payload['case_id']}, "
+                    f"score={payload['provisional_score']}/{payload['max_score']}, "
+                    f"review_items={payload['review_items']}"
+                )
+            return 0
+
+        if args.command == "grading-review":
+            result = prepare_grading_review(args.case_dir)
+            payload = {
+                "case_id": result.manifest.case_id,
+                "case_dir": str(result.case_dir),
+                "review_manifest": str(result.manifest_path),
+                "review_html": str(result.html_path),
+                "review_items": len(result.manifest.items),
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "completed"
+                print(
+                    f"grading-review {action}: {payload['case_id']}, "
+                    f"review_items={payload['review_items']}"
+                )
+                print(payload["review_manifest"])
+                print(payload["review_html"])
+            return 0
+
+        if args.command == "review":
+            decisions = load_grading_review_decisions(args.review_decisions)
+            result = finalize_grading_review(
+                args.case_dir,
+                decisions,
+                config,
+                force=args.force,
+            )
+            payload = {
+                "case_id": result.grading.case_id,
+                "case_dir": str(result.case_dir),
+                "current_stage": result.state.current_stage.value,
+                "final_score": result.grading.final_score,
+                "max_score": result.grading.max_score,
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "completed"
+                print(
+                    f"review {action}: {payload['case_id']}, "
+                    f"score={payload['final_score']}/{payload['max_score']}"
                 )
             return 0
 
