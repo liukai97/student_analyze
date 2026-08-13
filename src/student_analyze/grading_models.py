@@ -198,6 +198,7 @@ class AcademicErrorDiagnosis(StrictModel):
 
 class GradingTargetDecision(StrictModel):
     target_id: StableId
+    printed_label: str = Field(min_length=1)
     rubric_evaluations: list[RubricEvaluation] = Field(min_length=1)
     error_diagnoses: list[AcademicErrorDiagnosis] = Field(default_factory=list)
     confidence: Confidence
@@ -415,6 +416,7 @@ class Grading(StrictModel):
 
 class ReviewedTargetDecision(StrictModel):
     target_id: StableId
+    printed_label: str = Field(min_length=1)
     rubric_evaluations: list[RubricEvaluation] = Field(min_length=1)
     error_diagnoses: list[AcademicErrorDiagnosis] = Field(default_factory=list)
     decision_reason: str = Field(min_length=1)

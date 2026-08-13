@@ -1,4 +1,4 @@
-# Phase 6 rubric grading v1.0.0
+# Phase 6 rubric grading v1.1.0
 
 Use `skills/exam-grading/SKILL.md`.
 For chemistry targets, also use
@@ -6,8 +6,10 @@ For chemistry targets, also use
 
 Read the supplied `grading_input_manifest.json` and produce one
 `GradingDecisionSet` containing exactly the targets listed by `llm_target_ids`,
-in that order. Evaluate every rubric criterion exactly once, cite only response
-item IDs belonging to that target, and preserve the reviewed transcription.
+in that order. Copy each target's `target_id` and human-readable `printed_label`
+exactly into its decision. Evaluate every rubric criterion exactly once, cite
+only response item IDs belonging to that target, and preserve the reviewed
+transcription.
 
 Do not grade `auto_objective` or `auto_blank` targets. Do not calculate question
 or exam totals. Do not revise the Exam Master, Submission, or source evidence.

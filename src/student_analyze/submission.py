@@ -938,6 +938,13 @@ def verify_submission(
             confidence=item.transcription_confidence,
             uncertainty_notes=item.uncertainty_notes,
             requires_review=item.requires_review,
+            human_confirmed=item.transcription_human_confirmed,
+            review_note=(
+                item.human_review_notes[-1]
+                if item.transcription_human_confirmed and item.human_review_notes
+                else None
+            ),
+            blank_after_erasure_review=item.blank_after_erasure_review,
             label=f"submission item {item.item_id}",
         )
     _validate_formal_coverage(submission.items, master)
@@ -1102,6 +1109,9 @@ def _validate_transcription_decisions(
             confidence=decision.confidence,
             uncertainty_notes=decision.uncertainty_notes,
             requires_review=decision.requires_review,
+            human_confirmed=decision.human_confirmed,
+            review_note=decision.review_note,
+            blank_after_erasure_review=decision.blank_after_erasure_review,
             label=f"transcription {decision.mapping_ref}",
         )
 
@@ -1144,9 +1154,12 @@ def _compile_submission(
         for ref in mapping.excluded_annotation_refs:
             annotation = annotations[ref]
             if (
-                annotation.requires_review
-                or annotation.actor != AnnotationActor.TEACHER
-                or not annotation.human_confirmed
+                not mapping.human_confirmed
+                and (
+                    annotation.requires_review
+                    or annotation.actor != AnnotationActor.TEACHER
+                    or not annotation.human_confirmed
+                )
             ):
                 reasons.append(
                     f"Excluded annotation {ref} still has unresolved actor or scope."
@@ -1177,6 +1190,12 @@ def _compile_submission(
             mapping_evidence=mapping.evidence,
             transcription_evidence=decision.evidence,
             uncertainty_notes=decision.uncertainty_notes,
+            mapping_human_confirmed=mapping.human_confirmed,
+            transcription_human_confirmed=decision.human_confirmed,
+            human_review_notes=_unique_strings(
+                [mapping.review_note or "", decision.review_note or ""]
+            ),
+            blank_after_erasure_review=decision.blank_after_erasure_review,
             crop=input_item.crop,
             requires_review=requires_review,
             warnings=_unique_strings([*mapping.warnings, *decision.warnings]),
@@ -1223,6 +1242,9 @@ def _validate_transcribed_values(
     confidence: float,
     uncertainty_notes: list[str],
     requires_review: bool,
+    human_confirmed: bool,
+    review_note: str | None,
+    blank_after_erasure_review: bool,
     label: str,
 ) -> None:
     # Reuse the Pydantic invariants for final artifacts as well as decision inputs.
@@ -1237,6 +1259,9 @@ def _validate_transcribed_values(
         evidence=["validated persisted transcription fields"],
         uncertainty_notes=uncertainty_notes,
         requires_review=requires_review,
+        human_confirmed=human_confirmed,
+        review_note=review_note,
+        blank_after_erasure_review=blank_after_erasure_review,
     )
     if normalized_answer is not None and not is_blank:
         if question_type == QuestionType.OBJECTIVE_SINGLE:

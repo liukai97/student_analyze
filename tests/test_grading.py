@@ -200,6 +200,7 @@ def test_nonblank_subjective_target_requires_llm_rubric_decision(
         [
             GradingTargetDecision(
                 target_id=target.target_id,
+                printed_label=target.printed_label,
                 rubric_evaluations=[
                     RubricEvaluation(
                         rubric_ref=rubric_ref,
@@ -229,6 +230,38 @@ def test_nonblank_subjective_target_requires_llm_rubric_decision(
     assert not built.grading.requires_review
 
 
+def test_llm_decision_rejects_mismatched_printed_label(tmp_path: Path) -> None:
+    case_dir, config, _ = _submission_ready(
+        tmp_path,
+        observed_content="correct explanation",
+        question_type=QuestionType.SHORT_ANSWER,
+    )
+    context = prepare_grading_context(case_dir, config)
+    target = context.manifest.targets[0]
+    decisions = _grading_decisions(
+        context.manifest,
+        [
+            GradingTargetDecision(
+                target_id=target.target_id,
+                printed_label="wrong-label",
+                rubric_evaluations=[
+                    RubricEvaluation(
+                        rubric_ref=target.rubric[0].ref,
+                        status=RubricEvaluationStatus.MET,
+                        awarded_points=target.max_points,
+                        evidence_item_ids=[target.responses[0].submission_item_id],
+                        rationale="The required answer is present.",
+                    )
+                ],
+                confidence=1,
+            )
+        ],
+    )
+
+    with pytest.raises(CaseValidationError, match="printed_label"):
+        build_grading(case_dir, context.manifest, decisions, config)
+
+
 def test_undetermined_llm_result_generates_review_packet_and_human_override(
     tmp_path: Path,
 ) -> None:
@@ -246,6 +279,7 @@ def test_undetermined_llm_result_generates_review_packet_and_human_override(
         [
             GradingTargetDecision(
                 target_id=target.target_id,
+                printed_label=target.printed_label,
                 rubric_evaluations=[
                     RubricEvaluation(
                         rubric_ref=rubric_ref,
@@ -271,6 +305,7 @@ def test_undetermined_llm_result_generates_review_packet_and_human_override(
     html = packet.html_path.read_text(encoding="utf-8")
     assert "Editable review decision JSON" in html
     assert "Download review JSON" in html
+    assert f'"printed_label": "{target.printed_label}"' in html
 
     review = GradingReviewDecisionSet(
         case_id=built.grading.case_id,
@@ -282,6 +317,7 @@ def test_undetermined_llm_result_generates_review_packet_and_human_override(
         decisions=[
             ReviewedTargetDecision(
                 target_id=target.target_id,
+                printed_label=target.printed_label,
                 rubric_evaluations=[
                     RubricEvaluation(
                         rubric_ref=rubric_ref,
@@ -327,6 +363,7 @@ def test_every_deduction_requires_an_academic_error_diagnosis(tmp_path: Path) ->
         [
             GradingTargetDecision(
                 target_id=target.target_id,
+                printed_label=target.printed_label,
                 rubric_evaluations=[
                     RubricEvaluation(
                         rubric_ref=target.rubric[0].ref,

@@ -15,8 +15,10 @@ hashing, and final artifact commits to Python.
    reviewed grading context; do not reopen `submission.json`. Inspect a listed
    response crop only when the reviewed transcription explicitly preserves a
    diagram, structure, layout, or other visual answer that plain text cannot encode.
-2. Process exactly the target IDs in `llm_target_ids`, in that order. Do not emit
-   decisions for `auto_objective` or `auto_blank` targets.
+2. Process exactly the target IDs in `llm_target_ids`, in that order. For every
+   decision, copy both `target_id` and its human-readable `printed_label` exactly
+   from the matching manifest target. Do not emit decisions for `auto_objective`
+   or `auto_blank` targets.
 3. Compare the reviewed response text with the approved reference answers,
    solution summary, assumptions, and each rubric criterion. Consider all
    response slots belonging to the target,
@@ -61,5 +63,5 @@ hashing, and final artifact commits to Python.
 - A wrong objective choice is not evidence of a specific conceptual cause;
   Python records only `incorrect_objective` for it.
 
-Use provenance `prompt_version=grading-v1.0.0` and
-`skill_version=exam-grading-v1.0.0`.
+Use provenance `prompt_version=grading-v1.1.0` and
+`skill_version=exam-grading-v1.1.0`.
