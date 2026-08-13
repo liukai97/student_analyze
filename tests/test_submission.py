@@ -661,7 +661,7 @@ def test_objective_normalization_cannot_expand_option_meaning(tmp_path: Path) ->
         build_submission(case_dir, inputs.manifest, transcriptions, config)
 
 
-def test_low_confidence_and_erased_illegible_invariants() -> None:
+def test_low_confidence_and_erased_blank_review_invariants() -> None:
     with pytest.raises(ValidationError, match="low-confidence"):
         SubmissionTranscriptionDecision(
             mapping_ref="q1-answer",
@@ -672,7 +672,7 @@ def test_low_confidence_and_erased_illegible_invariants() -> None:
             confidence=0.79,
             evidence=["unclear mark"],
         )
-    with pytest.raises(ValidationError, match="erased writing"):
+    with pytest.raises(ValidationError, match="only after human review"):
         SubmissionTranscriptionDecision(
             mapping_ref="q1-answer",
             is_blank=True,
@@ -680,3 +680,14 @@ def test_low_confidence_and_erased_illegible_invariants() -> None:
             confidence=1.0,
             evidence=["cancelled writing"],
         )
+    reviewed_blank = SubmissionTranscriptionDecision(
+        mapping_ref="q1-answer",
+        is_blank=True,
+        has_erasure=True,
+        confidence=1.0,
+        evidence=["cancelled writing was reviewed as blank"],
+        human_confirmed=True,
+        review_note="Human reviewer directed the cancelled response to be scored blank.",
+        blank_after_erasure_review=True,
+    )
+    assert reviewed_blank.is_blank and reviewed_blank.has_erasure

@@ -25,7 +25,7 @@ Produce model decisions for phase 5. Leave redaction, crop rendering, coordinate
 3. Use `observed_content` for the visible response. Describe a hand-drawn structure faithfully when plain text cannot reproduce its form; the crop remains the primary evidence.
 4. Use `normalized_answer` only for lossless formatting, such as `b` to `B` or `Fe3+` to `Fe^{3+}`. Do not translate Chinese, expand an option letter to option text, add operands around an isolated symbol, balance an equation, or repair chemistry.
 5. Put actual alternate readings in `alternatives`. Put explanations of ambiguity in `uncertainty_notes`.
-6. Record an untouched empty slot with `is_blank=true`. Record fully cancelled but illegible writing with `is_blank=false`, `has_erasure=true`, no invented content, and review.
+6. Record an untouched empty slot with `is_blank=true`. Initially record fully cancelled but illegible writing with `is_blank=false`, `has_erasure=true`, no invented content, and review. A human reviewer may subsequently classify it as an effective blank while preserving the erasure fact by setting `is_blank=true`, `has_erasure=true`, `human_confirmed=true`, and `blank_after_erasure_review=true` with a review note.
 7. Require review for confidence below `0.8`, multiple readings, unclear final revisions, uncertain content roles, newly suspected annotations, or any representation that loses material visual information.
 8. Validate against `submission_transcription_decision.schema.json`, then invoke `submission`. Never write `submission.json` by hand.
 

@@ -175,6 +175,8 @@ class SubmissionMappingDecision(StrictModel):
     confidence: Confidence
     evidence: list[str] = Field(min_length=1)
     requires_review: bool = False
+    human_confirmed: bool = False
+    review_note: str | None = Field(default=None, min_length=1)
     warnings: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -198,6 +200,10 @@ class SubmissionMappingDecision(StrictModel):
             raise ValueError(
                 "new or unlinked teacher annotations must require review"
             )
+        if self.human_confirmed != (self.review_note is not None):
+            raise ValueError("human-confirmed mappings require exactly one review note")
+        if self.human_confirmed and self.requires_review:
+            raise ValueError("human-confirmed mappings cannot still require review")
         return self
 
 
@@ -308,6 +314,9 @@ class SubmissionTranscriptionDecision(StrictModel):
     evidence: list[str] = Field(min_length=1)
     uncertainty_notes: list[str] = Field(default_factory=list)
     requires_review: bool = False
+    human_confirmed: bool = False
+    review_note: str | None = Field(default=None, min_length=1)
+    blank_after_erasure_review: bool = False
     warnings: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -317,8 +326,16 @@ class SubmissionTranscriptionDecision(StrictModel):
                 raise ValueError("blank responses cannot contain transcribed answers")
             if self.alternatives:
                 raise ValueError("blank responses cannot contain alternative readings")
-            if self.has_erasure:
-                raise ValueError("erased writing must not be recorded as a blank response")
+            if self.has_erasure and not self.blank_after_erasure_review:
+                raise ValueError(
+                    "erased writing may be recorded as blank only after human review"
+                )
+        if self.blank_after_erasure_review and not (
+            self.is_blank and self.has_erasure and self.human_confirmed
+        ):
+            raise ValueError(
+                "blank_after_erasure_review requires a human-confirmed erased blank"
+            )
         if self.normalized_answer is not None and self.observed_content is None:
             raise ValueError("normalized answers require observed content")
         if self.observed_content is None and not self.is_blank:
@@ -335,6 +352,12 @@ class SubmissionTranscriptionDecision(StrictModel):
             raise ValueError("transcription uncertainty must require review")
         if self.confidence < LOW_TRANSCRIPTION_CONFIDENCE and not self.requires_review:
             raise ValueError("low-confidence transcriptions must require review")
+        if self.human_confirmed != (self.review_note is not None):
+            raise ValueError(
+                "human-confirmed transcriptions require exactly one review note"
+            )
+        if self.human_confirmed and self.requires_review:
+            raise ValueError("human-confirmed transcriptions cannot still require review")
         return self
 
 
@@ -375,6 +398,10 @@ class SubmissionItem(StrictModel):
     mapping_evidence: list[str] = Field(min_length=1)
     transcription_evidence: list[str] = Field(min_length=1)
     uncertainty_notes: list[str] = Field(default_factory=list)
+    mapping_human_confirmed: bool = False
+    transcription_human_confirmed: bool = False
+    human_review_notes: list[str] = Field(default_factory=list)
+    blank_after_erasure_review: bool = False
     crop: SubmissionCropAsset
     requires_review: bool
     warnings: list[str] = Field(default_factory=list)
@@ -393,6 +420,18 @@ class SubmissionItem(StrictModel):
             set(self.excluded_annotation_refs)
         ):
             raise ValueError("final excluded annotation refs must be unique")
+        if self.blank_after_erasure_review and not (
+            self.is_blank
+            and self.has_erasure
+            and self.transcription_human_confirmed
+        ):
+            raise ValueError(
+                "final erased blank must retain its human transcription confirmation"
+            )
+        if bool(self.human_review_notes) != (
+            self.mapping_human_confirmed or self.transcription_human_confirmed
+        ):
+            raise ValueError("final human review notes must reflect confirmations")
         return self
 
 

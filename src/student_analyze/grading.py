@@ -874,6 +874,10 @@ def _validate_grading_decisions(
         )
     targets = {item.target_id: item for item in manifest.targets}
     for decision in decisions.decisions:
+        if decision.printed_label != targets[decision.target_id].printed_label:
+            raise CaseValidationError(
+                "grading decision printed_label does not match input manifest"
+            )
         _validate_evaluations(
             decision.rubric_evaluations,
             decision.error_diagnoses,
@@ -958,6 +962,10 @@ def _validate_review_decisions(
         )
     targets = {item.target_id: item for item in source.input_manifest.targets}
     for decision in decisions.decisions:
+        if decision.printed_label != targets[decision.target_id].printed_label:
+            raise CaseValidationError(
+                "grading review decision printed_label does not match input manifest"
+            )
         _validate_evaluations(
             decision.rubric_evaluations,
             decision.error_diagnoses,
@@ -1193,12 +1201,13 @@ def _render_review_html(
             "model_identifier": None,
             "model_identifier_unavailable_reason": "Human review; no model used.",
             "prompt_version": "grading-human-review-v1.0.0",
-            "skill_version": "exam-grading-v1.0.0",
+            "skill_version": "exam-grading-v1.1.0",
             "decided_at": datetime.now(UTC).isoformat(),
         },
         "decisions": [
             {
                 "target_id": item.target.target_id,
+                "printed_label": item.target.printed_label,
                 "rubric_evaluations": [
                     evaluation.model_dump(mode="json")
                     for evaluation in item.proposed_result.rubric_evaluations
