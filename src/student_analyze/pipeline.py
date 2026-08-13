@@ -292,6 +292,13 @@ def commit_stage_artifact(
             raise CaseValidationError(
                 "submission_ready can only be completed with the production Submission contract"
             )
+    if stage in {PipelineStage.GRADED, PipelineStage.REVIEWED}:
+        from student_analyze.grading_models import Grading, GradingPhase
+
+        if model_type is not Grading or schema_id != "grading.schema.json":
+            raise CaseValidationError(
+                f"{stage.value} can only be completed with the production Grading contract"
+            )
     stage_fingerprint, fingerprint_config = build_stage_fingerprint(
         stage=stage,
         model_type=model_type,
@@ -327,6 +334,15 @@ def commit_stage_artifact(
         raise ReviewRequiredError(
             "Exam Master requires review and cannot complete master_ready"
         )
+    if stage == PipelineStage.GRADED and validated.phase != GradingPhase.GRADED:
+        raise CaseValidationError("graded requires a graded-phase Grading artifact")
+    if stage == PipelineStage.REVIEWED:
+        if validated.phase != GradingPhase.REVIEWED:
+            raise CaseValidationError("reviewed requires a reviewed-phase Grading artifact")
+        if validated.requires_review:
+            raise ReviewRequiredError(
+                "reviewed grading still contains unresolved review items"
+            )
 
     started_at = _now()
     run_id = _new_run_id()
@@ -539,6 +555,8 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
             graph_sha256=graph_sha256,
         )
 
+    active_submission = None
+    active_submission_path = None
     submission_completion = next(
         (
             completion
@@ -571,7 +589,9 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
         from student_analyze.submission import read_submission, verify_submission
 
         submission_reference = submission_references[0]
-        submission = read_submission(case_dir / submission_reference.relative_path)
+        active_submission_path = case_dir / submission_reference.relative_path
+        submission = read_submission(active_submission_path)
+        active_submission = submission
         if submission.stage_fingerprint != submission_completion.stage_fingerprint:
             raise CaseValidationError(
                 "Submission stage fingerprint differs from pipeline state"
@@ -593,6 +613,100 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
             graph_sha256=graph_sha256,
             page_manifest_sha256=page_manifest_sha256,
             exam_master_sha256=exam_master_sha256,
+        )
+
+    active_graded = None
+    active_graded_path = None
+    graded_completion = next(
+        (
+            completion
+            for completion in state.completed_stages
+            if completion.stage == PipelineStage.GRADED
+        ),
+        None,
+    )
+    if graded_completion is not None:
+        if (
+            active_exam_master is None
+            or active_exam_master_path is None
+            or active_submission is None
+            or active_submission_path is None
+        ):
+            raise CaseValidationError(
+                "graded requires active Exam Master and Submission artifacts"
+            )
+        grading_references = [
+            reference
+            for reference in graded_completion.artifacts
+            if reference.schema_id == "grading.schema.json"
+        ]
+        if len(grading_references) != 1:
+            raise CaseValidationError("graded must have exactly one active Grading")
+        from student_analyze.grading import read_grading, verify_grading
+
+        grading_reference = grading_references[0]
+        active_graded_path = case_dir / grading_reference.relative_path
+        active_graded = read_grading(active_graded_path)
+        if active_graded.stage_fingerprint != graded_completion.stage_fingerprint:
+            raise CaseValidationError(
+                "Grading stage fingerprint differs from pipeline state"
+            )
+        exam_master_sha256, _ = artifact_digest(active_exam_master_path)
+        submission_sha256, _ = artifact_digest(active_submission_path)
+        verify_grading(
+            active_graded,
+            active_exam_master,
+            active_submission,
+            exam_master_sha256=exam_master_sha256,
+            submission_sha256=submission_sha256,
+        )
+
+    reviewed_completion = next(
+        (
+            completion
+            for completion in state.completed_stages
+            if completion.stage == PipelineStage.REVIEWED
+        ),
+        None,
+    )
+    if reviewed_completion is not None:
+        if (
+            active_exam_master is None
+            or active_exam_master_path is None
+            or active_submission is None
+            or active_submission_path is None
+            or active_graded is None
+            or active_graded_path is None
+        ):
+            raise CaseValidationError(
+                "reviewed requires active Exam Master, Submission, and Grading artifacts"
+            )
+        reviewed_references = [
+            reference
+            for reference in reviewed_completion.artifacts
+            if reference.schema_id == "grading.schema.json"
+        ]
+        if len(reviewed_references) != 1:
+            raise CaseValidationError("reviewed must have exactly one active Grading")
+        from student_analyze.grading import read_grading, verify_grading
+
+        reviewed_reference = reviewed_references[0]
+        reviewed = read_grading(case_dir / reviewed_reference.relative_path)
+        if reviewed.stage_fingerprint != reviewed_completion.stage_fingerprint:
+            raise CaseValidationError(
+                "Reviewed grading stage fingerprint differs from pipeline state"
+            )
+        exam_master_sha256, _ = artifact_digest(active_exam_master_path)
+        submission_sha256, _ = artifact_digest(active_submission_path)
+        active_graded_sha256, _ = artifact_digest(active_graded_path)
+        verify_grading(
+            reviewed,
+            active_exam_master,
+            active_submission,
+            exam_master_sha256=exam_master_sha256,
+            submission_sha256=submission_sha256,
+            source_grading=active_graded,
+            source_grading_sha256=active_graded_sha256,
         )
     return manifest, state
 

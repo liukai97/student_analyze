@@ -94,6 +94,28 @@ class AppConfig:
             "review_policy": "low-confidence-alternatives-role-conflict-v1",
         }
 
+    def grading_context_fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "routing_policy": "objective-and-blank-auto-otherwise-llm-v1",
+            "input_policy": "phase-5-review-must-be-complete-v1",
+        }
+
+    def grading_fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "routing_policy": "objective-and-blank-auto-otherwise-llm-v1",
+            "objective_match_policy": "normalized-option-set-exact-v1",
+            "blank_policy": "all-formal-slots-blank-zero-v1",
+            "rubric_policy": "criterion-complete-evidence-backed-v1",
+        }
+
+    def grading_review_fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "review_policy": "required-targets-human-overlay-v1",
+        }
+
 
 def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> AppConfig:
     config = AppConfig()

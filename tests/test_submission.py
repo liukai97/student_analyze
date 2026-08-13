@@ -105,7 +105,12 @@ def _provenance(
     )
 
 
-def _ready_case(tmp_path: Path, *, teacher_annotation: bool = False):
+def _ready_case(
+    tmp_path: Path,
+    *,
+    teacher_annotation: bool = False,
+    question_type: QuestionType = QuestionType.OBJECTIVE_SINGLE,
+):
     source = tmp_path / "raw"
     source.mkdir()
     Image.new("RGB", (40, 24), "white").save(source / "question.jpg", "JPEG")
@@ -245,16 +250,24 @@ def _ready_case(tmp_path: Path, *, teacher_annotation: bool = False):
     question = mapped.graph.questions[0]
     version_id = question.effective_version_id
     assert version_id is not None
+    objective = question_type in {
+        QuestionType.OBJECTIVE_SINGLE,
+        QuestionType.OBJECTIVE_MULTIPLE,
+    }
     reconstruction = QuestionReconstructionDecision(
         question_id=question.question_id,
         version_id=version_id,
         prompt_text="Choose one option.",
-        question_type=QuestionType.OBJECTIVE_SINGLE,
+        question_type=question_type,
         points=1,
-        options=[
-            ChoiceOptionDecision(label="A", text="first"),
-            ChoiceOptionDecision(label="B", text="second"),
-        ],
+        options=(
+            [
+                ChoiceOptionDecision(label="A", text="first"),
+                ChoiceOptionDecision(label="B", text="second"),
+            ]
+            if objective
+            else []
+        ),
         source_contains_student_content=False,
         source_contains_teacher_annotation=False,
         confidence=1.0,
@@ -350,7 +363,7 @@ def _ready_case(tmp_path: Path, *, teacher_annotation: bool = False):
                 version_id=version_id,
                 printed_label="1",
                 prompt_text="Choose one option.",
-                question_type=QuestionType.OBJECTIVE_SINGLE,
+                question_type=question_type,
                 points=1,
                 options=reconstruction.options,
                 solver_required=True,
@@ -371,9 +384,21 @@ def _ready_case(tmp_path: Path, *, teacher_annotation: bool = False):
                 ],
                 verification_results=[
                     VerificationResult(
-                        method=VerificationMethod.OPTION_MEMBERSHIP,
-                        status=VerificationStatus.PASSED,
-                        details="Reference answer is a listed option.",
+                        method=(
+                            VerificationMethod.OPTION_MEMBERSHIP
+                            if objective
+                            else VerificationMethod.LOGIC_REVIEW
+                        ),
+                        status=(
+                            VerificationStatus.PASSED
+                            if objective
+                            else VerificationStatus.NOT_APPLICABLE
+                        ),
+                        details=(
+                            "Reference answer is a listed option."
+                            if objective
+                            else "The fixture rubric is reviewed semantically."
+                        ),
                     )
                 ],
                 approval_status=ApprovalStatus.APPROVED,
