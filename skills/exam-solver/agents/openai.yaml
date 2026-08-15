@@ -1,0 +1,4 @@
+interface:
+  display_name: "Exam Solver"
+  short_description: "Blind-solve routed clean exam questions"
+  default_prompt: "Use $exam-solver to solve the routed questions from a clean solver-input manifest."

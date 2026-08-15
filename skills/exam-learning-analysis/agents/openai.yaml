@@ -1,0 +1,4 @@
+interface:
+  display_name: "Exam Learning Analysis"
+  short_description: "Evidence-grounded rubric mapping and learning recommendations"
+  default_prompt: "Use $exam-learning-analysis to map reviewed rubric evidence to knowledge points and produce the phase 7 decision JSON."

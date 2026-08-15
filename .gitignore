@@ -2,8 +2,9 @@ raw_exam/
 __pycache__/
 *.py[cod]
 evals/
-schemas/phase0_*.schema.json
+schemas/
 *.db
+data/
 .pytest_cache/
 *.egg-info/
 build/

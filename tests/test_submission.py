@@ -113,15 +113,14 @@ def _ready_case(
 ):
     source = tmp_path / "raw"
     source.mkdir()
-    Image.new("RGB", (40, 24), "white").save(source / "question.jpg", "JPEG")
-    answer = Image.new("RGB", (40, 24), "white")
-    draw = ImageDraw.Draw(answer)
-    draw.text((6, 6), "B", fill="black")
-    answer.save(source / "answer.jpg", "JPEG")
+    exam = Image.new("RGB", (80, 24), "white")
+    draw = ImageDraw.Draw(exam)
+    draw.text((46, 6), "B", fill="black")
+    exam.save(source / "exam.jpg", "JPEG")
     config = AppConfig(cases_dir=tmp_path / "cases")
     ingested = ingest_case(source, config)
     case_manifest_sha256, _ = artifact_digest(ingested.case_dir / "case_manifest.json")
-    assets = {item.relative_path: item for item in ingested.manifest.source_assets}
+    asset = ingested.manifest.source_assets[0]
     page_decisions = PageDecisionSet(
         case_id=ingested.manifest.case_id,
         source_manifest_sha256=case_manifest_sha256,
@@ -135,29 +134,38 @@ def _ready_case(
             SourcePageDecision(
                 source_asset_id=asset.asset_id,
                 source_sha256=asset.sha256,
-                layout=PageLayout.SINGLE_PAGE,
+                layout=PageLayout.DOUBLE_PAGE,
                 layout_confidence=1.0,
                 pages=[
                     LogicalPageDecision(
-                        position=PagePosition.SINGLE,
+                        position=PagePosition.LEFT,
                         crop_box=PixelBox(left=0, top=0, right=40, bottom=24),
                         rotation_clockwise=0,
                         orientation_confidence=1.0,
                         boundary_confidence=1.0,
-                        evidence=["single-page test fixture"],
-                    )
+                        evidence=["question page test fixture"],
+                    ),
+                    LogicalPageDecision(
+                        position=PagePosition.RIGHT,
+                        crop_box=PixelBox(left=40, top=0, right=80, bottom=24),
+                        rotation_clockwise=0,
+                        orientation_confidence=1.0,
+                        boundary_confidence=1.0,
+                        evidence=["answer page test fixture"],
+                    ),
                 ],
             )
-            for asset in assets.values()
         ],
     )
     pages = prepare_logical_pages(ingested.case_dir, page_decisions, config)
     page_manifest_sha256, _ = artifact_digest(
         ingested.case_dir / pages.state.completed_stages[-1].artifacts[0].relative_path
     )
-    page_by_source = {page.source_relative_path: page for page in pages.manifest.pages}
-    question_page = page_by_source["question.jpg"]
-    answer_page = page_by_source["answer.jpg"]
+    page_by_position = {
+        page.source_position: page for page in pages.manifest.pages
+    }
+    question_page = page_by_position[PagePosition.LEFT]
+    answer_page = page_by_position[PagePosition.RIGHT]
     mapping_decisions = DocumentGraphDecisionSet(
         case_id=ingested.manifest.case_id,
         page_manifest_sha256=page_manifest_sha256,
@@ -550,7 +558,7 @@ def test_submission_commits_with_unresolved_teacher_mark_in_review_queue(
         left=4, top=4, right=20, bottom=16
     )
     assert built.submission.items[0].crop.raw_bbox == PixelBox(
-        left=4, top=4, right=20, bottom=16
+        left=44, top=4, right=60, bottom=16
     )
     _, verified_state = verify_case(case_dir)
     assert verified_state.current_stage == PipelineStage.SUBMISSION_READY

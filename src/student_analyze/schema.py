@@ -38,6 +38,16 @@ from student_analyze.submission_models import (
     SubmissionStructureManifest,
     SubmissionTranscriptionDecisionSet,
 )
+from student_analyze.learning_models import (
+    ExamMetadataDecision,
+    KnowledgeCatalog,
+    LearningAnalysis,
+    LearningAnalysisDecision,
+    LearningInputManifest,
+    LearningReviewManifest,
+    ReportManifest,
+    StudentProfile,
+)
 
 
 SCHEMA_MODELS: dict[str, type[BaseModel]] = {
@@ -66,6 +76,14 @@ SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "grading_input_manifest.schema.json": GradingInputManifest,
     "grading_review_decision.schema.json": GradingReviewDecisionSet,
     "grading_review_manifest.schema.json": GradingReviewManifest,
+    "student_profile.schema.json": StudentProfile,
+    "exam_metadata_decision.schema.json": ExamMetadataDecision,
+    "knowledge_catalog.schema.json": KnowledgeCatalog,
+    "learning_input_manifest.schema.json": LearningInputManifest,
+    "learning_analysis_decision.schema.json": LearningAnalysisDecision,
+    "learning_analysis.schema.json": LearningAnalysis,
+    "learning_review_manifest.schema.json": LearningReviewManifest,
+    "report_manifest.schema.json": ReportManifest,
 }
 SCHEMA_BASE_ID = "https://local.student-analyze/schemas/"
 

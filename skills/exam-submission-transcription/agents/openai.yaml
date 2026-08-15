@@ -1,0 +1,4 @@
+interface:
+  display_name: "Exam Submission Transcription"
+  short_description: "Map and faithfully transcribe handwritten exam responses"
+  default_prompt: "Use $exam-submission-transcription to map answer regions and faithfully transcribe each student response."

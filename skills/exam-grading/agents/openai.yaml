@@ -1,0 +1,4 @@
+interface:
+  display_name: "Exam Grading"
+  short_description: "Grade reviewed exam responses against approved rubrics"
+  default_prompt: "Use $exam-grading to grade the routed non-objective responses rubric by rubric."
