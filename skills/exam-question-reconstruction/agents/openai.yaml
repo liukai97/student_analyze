@@ -1,0 +1,4 @@
+interface:
+  display_name: "Exam Question Reconstruction"
+  short_description: "Reconstruct clean printed questions from marked pages"
+  default_prompt: "Use $exam-question-reconstruction to reconstruct printed exam content without copying student or teacher marks."

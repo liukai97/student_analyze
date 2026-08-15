@@ -299,6 +299,13 @@ def commit_stage_artifact(
             raise CaseValidationError(
                 f"{stage.value} can only be completed with the production Grading contract"
             )
+    if stage == PipelineStage.REPORTED:
+        from student_analyze.learning_models import ReportManifest
+
+        if model_type is not ReportManifest or schema_id != "report_manifest.schema.json":
+            raise CaseValidationError(
+                "reported can only be completed with the production ReportManifest contract"
+            )
     stage_fingerprint, fingerprint_config = build_stage_fingerprint(
         stage=stage,
         model_type=model_type,
@@ -342,6 +349,13 @@ def commit_stage_artifact(
         if validated.requires_review:
             raise ReviewRequiredError(
                 "reviewed grading still contains unresolved review items"
+            )
+    if stage == PipelineStage.REPORTED:
+        if validated.requires_review:
+            raise ReviewRequiredError("report manifest still contains unresolved review items")
+        if validated.stage_fingerprint != stage_fingerprint:
+            raise CaseValidationError(
+                "report manifest stage fingerprint differs from the computed fingerprint"
             )
 
     started_at = _now()
@@ -661,6 +675,8 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
             submission_sha256=submission_sha256,
         )
 
+    active_reviewed = None
+    active_reviewed_path = None
     reviewed_completion = next(
         (
             completion
@@ -691,7 +707,9 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
         from student_analyze.grading import read_grading, verify_grading
 
         reviewed_reference = reviewed_references[0]
-        reviewed = read_grading(case_dir / reviewed_reference.relative_path)
+        active_reviewed_path = case_dir / reviewed_reference.relative_path
+        reviewed = read_grading(active_reviewed_path)
+        active_reviewed = reviewed
         if reviewed.stage_fingerprint != reviewed_completion.stage_fingerprint:
             raise CaseValidationError(
                 "Reviewed grading stage fingerprint differs from pipeline state"
@@ -708,6 +726,37 @@ def verify_case(case_dir: Path) -> tuple[CaseManifest, PipelineState]:
             source_grading=active_graded,
             source_grading_sha256=active_graded_sha256,
         )
+
+    reported_completion = next(
+        (
+            completion
+            for completion in state.completed_stages
+            if completion.stage == PipelineStage.REPORTED
+        ),
+        None,
+    )
+    if reported_completion is not None:
+        if active_reviewed is None or active_reviewed_path is None:
+            raise CaseValidationError("reported requires an active reviewed grading artifact")
+        report_references = [
+            reference
+            for reference in reported_completion.artifacts
+            if reference.schema_id == "report_manifest.schema.json"
+        ]
+        if len(report_references) != 1:
+            raise CaseValidationError("reported must have exactly one active report manifest")
+        from student_analyze.reporting import read_report_manifest, verify_report_assets
+
+        report_reference = report_references[0]
+        report = read_report_manifest(case_dir / report_reference.relative_path)
+        if report.stage_fingerprint != reported_completion.stage_fingerprint:
+            raise CaseValidationError(
+                "report manifest stage fingerprint differs from pipeline state"
+            )
+        reviewed_sha256, _ = artifact_digest(active_reviewed_path)
+        if report.analysis.input_manifest.reviewed_grading_sha256 != reviewed_sha256:
+            raise CaseValidationError("report references a different reviewed grading artifact")
+        verify_report_assets(case_dir, report)
     return manifest, state
 
 

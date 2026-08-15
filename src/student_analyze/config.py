@@ -28,6 +28,9 @@ class AppConfig:
     log_level: str = "INFO"
     source_extensions: tuple[str, ...] = DEFAULT_EXTENSIONS
     jpeg_quality: int = 95
+    knowledge_mapping_version: str = "rubric-knowledge-mapping-v1"
+    mastery_algorithm_version: str = "weighted-performance-v1"
+    report_policy_version: str = "evidence-claim-template-v1"
 
     def fingerprint_payload(self) -> dict[str, object]:
         return {
@@ -116,6 +119,23 @@ class AppConfig:
             "review_policy": "required-targets-human-overlay-v1",
         }
 
+    def learning_context_fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "input_policy": "reviewed-final-targets-only-v1",
+            "mapping_unit": "rubric-first-target-fallback-v1",
+            "knowledge_mapping_version": self.knowledge_mapping_version,
+        }
+
+    def reporting_fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "config_version": self.config_version,
+            "knowledge_mapping_version": self.knowledge_mapping_version,
+            "mastery_algorithm_version": self.mastery_algorithm_version,
+            "report_policy_version": self.report_policy_version,
+            "claim_policy": "enumerated-strength-template-only-v1",
+        }
+
 
 def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> AppConfig:
     config = AppConfig()
@@ -135,6 +155,9 @@ def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> A
             "log_level",
             "source_extensions",
             "jpeg_quality",
+            "knowledge_mapping_version",
+            "mastery_algorithm_version",
+            "report_policy_version",
         }
         if unknown:
             raise ConfigurationError(f"unknown config keys: {', '.join(sorted(unknown))}")
@@ -144,6 +167,15 @@ def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> A
         log_level = section.get("log_level", config.log_level)
         extensions = section.get("source_extensions", list(config.source_extensions))
         jpeg_quality = section.get("jpeg_quality", config.jpeg_quality)
+        knowledge_mapping_version = section.get(
+            "knowledge_mapping_version", config.knowledge_mapping_version
+        )
+        mastery_algorithm_version = section.get(
+            "mastery_algorithm_version", config.mastery_algorithm_version
+        )
+        report_policy_version = section.get(
+            "report_policy_version", config.report_policy_version
+        )
         if not isinstance(config_version, str) or not config_version:
             raise ConfigurationError("config_version must be a non-empty string")
         if not isinstance(configured_cases, str) or not configured_cases:
@@ -158,6 +190,13 @@ def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> A
             raise ConfigurationError("jpeg_quality must be an integer")
         if not 1 <= jpeg_quality <= 100:
             raise ConfigurationError("jpeg_quality must be between 1 and 100")
+        for name, value in (
+            ("knowledge_mapping_version", knowledge_mapping_version),
+            ("mastery_algorithm_version", mastery_algorithm_version),
+            ("report_policy_version", report_policy_version),
+        ):
+            if not isinstance(value, str) or not value:
+                raise ConfigurationError(f"{name} must be a non-empty string")
 
         configured_path = Path(configured_cases)
         if not configured_path.is_absolute():
@@ -169,6 +208,9 @@ def load_config(path: Path | None = None, *, cases_dir: Path | None = None) -> A
             log_level=log_level.upper(),
             source_extensions=normalized_extensions,
             jpeg_quality=jpeg_quality,
+            knowledge_mapping_version=knowledge_mapping_version,
+            mastery_algorithm_version=mastery_algorithm_version,
+            report_policy_version=report_policy_version,
         )
 
     if cases_dir is not None:

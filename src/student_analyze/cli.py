@@ -9,6 +9,11 @@ from pathlib import Path
 import sys
 
 from student_analyze.config import load_config
+from student_analyze.database import (
+    initialize_student_profile,
+    rebuild_database,
+    verify_database,
+)
 from student_analyze.document_mapper import load_document_decisions, map_documents
 from student_analyze.errors import StudentAnalyzeError
 from student_analyze.exam_master import (
@@ -32,6 +37,8 @@ from student_analyze.grading import (
     prepare_grading_review,
 )
 from student_analyze.pipeline import ingest_case, verify_case
+from student_analyze.learning import prepare_learning_context, prepare_learning_review
+from student_analyze.reporting import build_report
 from student_analyze.schema import SCHEMA_MODELS, write_schemas
 from student_analyze.submission import (
     build_submission,
@@ -169,6 +176,67 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("review_decisions", type=Path)
     review.add_argument("--force", action="store_true", help="preserve a new review run")
     review.add_argument("--json", action="store_true", help="emit a machine-readable result")
+
+    profile_init = subparsers.add_parser(
+        "profile-init", help="initialize the single local student profile"
+    )
+    profile_init.add_argument(
+        "--profile", type=Path, default=Path("data/student_profile.json")
+    )
+    profile_init.add_argument("--display-name")
+    profile_init.add_argument("--student-profile-id", default="student-default")
+    profile_init.add_argument("--json", action="store_true")
+
+    learning_context = subparsers.add_parser(
+        "learning-context",
+        help="freeze reviewed grading and catalog context for phase 7 analysis",
+    )
+    learning_context.add_argument("case_dir", type=Path)
+    learning_context.add_argument("metadata", type=Path)
+    learning_context.add_argument("--catalog", type=Path)
+    learning_context.add_argument(
+        "--catalog-dir", type=Path, default=Path("data/knowledge_catalogs")
+    )
+    learning_context.add_argument("--json", action="store_true")
+
+    learning_review = subparsers.add_parser(
+        "learning-review", help="render unresolved phase 7 semantic decisions for review"
+    )
+    learning_review.add_argument("input_manifest", type=Path)
+    learning_review.add_argument("decisions", type=Path)
+    learning_review.add_argument("--json", action="store_true")
+
+    report = subparsers.add_parser(
+        "report", help="compile knowledge evidence, persist history, and render reports"
+    )
+    report.add_argument("case_dir", type=Path)
+    report.add_argument("input_manifest", type=Path)
+    report.add_argument("decisions", type=Path)
+    report.add_argument("--db", type=Path, default=Path("data/student.sqlite3"))
+    report.add_argument("--profile", type=Path, default=Path("data/student_profile.json"))
+    report.add_argument("--migrations-dir", type=Path, default=Path("migrations"))
+    report.add_argument(
+        "--catalog-dir", type=Path, default=Path("data/knowledge_catalogs")
+    )
+    report.add_argument("--force", action="store_true")
+    report.add_argument("--json", action="store_true")
+
+    db_verify = subparsers.add_parser(
+        "db-verify", help="apply migrations and verify the SQLite query projection"
+    )
+    db_verify.add_argument("--db", type=Path, default=Path("data/student.sqlite3"))
+    db_verify.add_argument("--migrations-dir", type=Path, default=Path("migrations"))
+    db_verify.add_argument("--json", action="store_true")
+
+    db_rebuild = subparsers.add_parser(
+        "db-rebuild", help="atomically rebuild SQLite from active report artifacts"
+    )
+    db_rebuild.add_argument("--db", type=Path, default=Path("data/student.sqlite3"))
+    db_rebuild.add_argument(
+        "--profile", type=Path, default=Path("data/student_profile.json")
+    )
+    db_rebuild.add_argument("--migrations-dir", type=Path, default=Path("migrations"))
+    db_rebuild.add_argument("--json", action="store_true")
 
     schema = subparsers.add_parser("schema", help="generate JSON Schemas from Pydantic")
     schema.add_argument("--output-dir", type=Path, default=Path("schemas"))
@@ -531,6 +599,134 @@ def main(argv: list[str] | None = None) -> int:
                     f"review {action}: {payload['case_id']}, "
                     f"score={payload['final_score']}/{payload['max_score']}"
                 )
+            return 0
+
+        if args.command == "profile-init":
+            profile, reused = initialize_student_profile(
+                args.profile,
+                display_name=args.display_name,
+                student_profile_id=args.student_profile_id,
+            )
+            payload = {
+                "student_profile_id": profile.student_profile_id,
+                "profile": str(args.profile.resolve()),
+                "reused": reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                print(f"profile {'reused' if reused else 'initialized'}: {profile.student_profile_id}")
+                print(payload["profile"])
+            return 0
+
+        if args.command == "learning-context":
+            result = prepare_learning_context(
+                args.case_dir,
+                config,
+                metadata_path=args.metadata,
+                catalog_path=args.catalog,
+                catalog_dir=args.catalog_dir,
+            )
+            payload = {
+                "case_id": result.manifest.case_id,
+                "learning_input_manifest": str(result.manifest_path),
+                "targets": len(result.manifest.targets),
+                "catalog_version": result.manifest.catalog.version,
+                "catalog_points": len(result.manifest.catalog.points),
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "prepared"
+                print(f"learning-context {action}: {payload['case_id']}, targets={payload['targets']}")
+                print(payload["learning_input_manifest"])
+            return 0
+
+        if args.command == "learning-review":
+            result = prepare_learning_review(args.input_manifest, args.decisions)
+            payload = {
+                "case_id": result.manifest.case_id,
+                "review_manifest": str(result.manifest_path),
+                "review_html": str(result.html_path),
+                "review_items": len(result.manifest.items),
+                "requires_review": result.manifest.requires_review,
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                print(
+                    f"learning-review {'reused' if result.reused else 'prepared'}: "
+                    f"{payload['case_id']}, items={payload['review_items']}"
+                )
+                print(payload["review_manifest"])
+                print(payload["review_html"])
+            return 0
+
+        if args.command == "report":
+            result = build_report(
+                args.case_dir,
+                config,
+                manifest_path=args.input_manifest,
+                decision_path=args.decisions,
+                db_path=args.db,
+                migrations_dir=args.migrations_dir,
+                profile_path=args.profile,
+                catalog_dir=args.catalog_dir,
+                force=args.force,
+            )
+            payload = {
+                "case_id": result.report.case_id,
+                "analysis_id": result.report.analysis_id,
+                "current_stage": result.state.current_stage.value,
+                "score": result.report.final_score,
+                "max_score": result.report.max_score,
+                "claims": len(result.report.claims),
+                "report_assets": [item.relative_path for item in result.report.assets],
+                "reused": result.reused,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                action = "reused" if result.reused else "completed"
+                print(
+                    f"report {action}: {payload['case_id']}, "
+                    f"score={payload['score']}/{payload['max_score']}, claims={payload['claims']}"
+                )
+                for path in payload["report_assets"]:
+                    print(result.case_dir / path)
+            return 0
+
+        if args.command in {"db-verify", "db-rebuild"}:
+            if args.command == "db-verify":
+                status = verify_database(args.db, args.migrations_dir)
+            else:
+                status = rebuild_database(
+                    args.db,
+                    args.migrations_dir,
+                    profile_path=args.profile,
+                    cases_dir=config.cases_dir,
+                )
+            payload = {
+                "database": str(status.path),
+                "schema_version": status.schema_version,
+                "active_analyses": status.active_analyses,
+                "prepared_analyses": status.prepared_analyses,
+                "exams": status.exams,
+                "evidence": status.evidence,
+                "snapshots": status.snapshots,
+                "logical_sha256": status.logical_sha256,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            else:
+                print(
+                    f"database {args.command.removeprefix('db-')}: "
+                    f"schema={status.schema_version}, active={status.active_analyses}, "
+                    f"evidence={status.evidence}"
+                )
+                print(payload["database"])
             return 0
 
         if args.command == "schema":

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Exam Answer Evidence"
+  short_description: "Inspect and scope existing exam answer evidence"
+  default_prompt: "Use $exam-answer-evidence to inspect mapped exam materials for official answers and teacher annotations."

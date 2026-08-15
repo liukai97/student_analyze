@@ -4,3 +4,6 @@ cases_dir = "cases"
 log_level = "INFO"
 source_extensions = [".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".pdf"]
 jpeg_quality = 95
+knowledge_mapping_version = "rubric-knowledge-mapping-v1"
+mastery_algorithm_version = "weighted-performance-v1"
+report_policy_version = "evidence-claim-template-v1"
