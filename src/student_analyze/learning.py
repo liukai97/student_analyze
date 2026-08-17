@@ -873,6 +873,59 @@ def _render_learning_review(
     manifest: LearningInputManifest,
     decision: LearningAnalysisDecision,
 ) -> str:
+    target_by_id = {item.target.target_id: item for item in manifest.targets}
+    mapping_by_id = {item.mapping_id: item for item in decision.mappings}
+    point_names = {item.point_id: item.name for item in manifest.catalog.points}
+    point_names.update(
+        (item.point_id, item.name) for item in decision.proposed_points
+    )
+    mapping_rows = []
+    for review_item in review.items:
+        if review_item.kind != LearningReviewItemKind.KNOWLEDGE_MAPPING:
+            continue
+        mapping = mapping_by_id[review_item.entity_id]
+        target_input = target_by_id[mapping.target_id]
+        target = target_input.target
+        rubric = next(item for item in target.rubric if item.ref == mapping.rubric_ref)
+        evaluation = next(
+            item
+            for item in target_input.result.rubric_evaluations
+            if item.rubric_ref == mapping.rubric_ref
+        )
+        if mapping.status == MappingStatus.MAPPED:
+            status = "建议映射"
+            mapped_point = point_names.get(mapping.point_id or "", mapping.point_id or "")
+        else:
+            status = "建议保持未映射"
+            candidates = "、".join(target.knowledge_points)
+            mapped_point = f"候选：{candidates}" if candidates else "无候选知识点"
+        awarded = (
+            "未确定" if evaluation.awarded_points is None else f"{evaluation.awarded_points:g}"
+        )
+        score = f"{awarded} / {rubric.points:g}"
+        explanation = mapping.rationale
+        if mapping.unmapped_reason is not None:
+            explanation += " " + mapping.unmapped_reason
+        mapping_rows.append(
+            "<tr><td>"
+            + escape(target.printed_label)
+            + "</td><td>"
+            + escape(target.prompt_text)
+            + "</td><td>"
+            + escape(rubric.description)
+            + "</td><td>"
+            + escape(score)
+            + "</td><td>"
+            + escape(status)
+            + "</td><td>"
+            + escape(mapped_point)
+            + "</td><td>"
+            + escape(explanation)
+            + "</td><td>"
+            + escape("；".join(review_item.reasons))
+            + "</td></tr>"
+        )
+
     details: dict[str, str] = {manifest.case_id: manifest.metadata.subject}
     details.update(
         (item.point_id, f"{item.name}：{item.description}")
@@ -882,7 +935,7 @@ def _render_learning_review(
         (item.change_id, item.rationale) for item in decision.knowledge_changes
     )
     details.update((item.mapping_id, item.rationale) for item in decision.mappings)
-    rows = "".join(
+    other_rows = "".join(
         "<tr><td>"
         + escape(item.kind.value)
         + "</td><td><code>"
@@ -893,20 +946,42 @@ def _render_learning_review(
         + escape("；".join(item.reasons))
         + "</td></tr>"
         for item in review.items
+        if item.kind != LearningReviewItemKind.KNOWLEDGE_MAPPING
     )
-    if not rows:
-        rows = '<tr><td colspan="4">没有待复核项。</td></tr>'
+    mapping_table = ""
+    if mapping_rows:
+        mapping_table = (
+            '<h2>知识映射复核</h2><p>“建议保持未映射”表示当前评分证据不能可靠归因到'
+            '单一知识点，并不表示题目没有知识点。</p><table><thead><tr><th>题号</th>'
+            '<th>题干</th><th>评分项</th><th>得分</th><th>当前决定</th><th>知识点</th>'
+            '<th>判断说明</th><th>复核原因</th></tr></thead><tbody>'
+            + "".join(mapping_rows)
+            + "</tbody></table>"
+        )
+    other_table = ""
+    if other_rows:
+        other_table = (
+            '<h2>其他待复核项</h2><table><thead><tr><th>类型</th><th>实体</th>'
+            '<th>内容</th><th>原因</th></tr></thead><tbody>'
+            + other_rows
+            + "</tbody></table>"
+        )
+    if not mapping_table and not other_table:
+        other_table = "<p>没有待复核项。</p>"
     return (
         '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
-        '<title>阶段 7 学习分析复核</title><style>body{max-width:1100px;margin:2rem auto;'
+        '<title>阶段 7 学习分析复核</title><style>body{max-width:1500px;margin:2rem auto;'
         'font:15px/1.6 system-ui,sans-serif}table{border-collapse:collapse;width:100%}'
         'th,td{border:1px solid #ccc;padding:.5rem;text-align:left;vertical-align:top}'
+        'th{background:#f3f5f7;position:sticky;top:0}td:nth-child(2){min-width:18rem}'
         '</style></head><body><h1>阶段 7 学习分析复核</h1>'
         f'<p>Case：<code>{escape(review.case_id)}</code></p>'
+        f'<p>待复核项：{len(review.items)} 条。</p>'
         '<p>人工确认后，请更新原决定 JSON 中对应实体的 '
         '<code>human_confirmed</code>/<code>requires_review</code>，并保留审阅说明。</p>'
-        '<table><thead><tr><th>类型</th><th>实体</th><th>内容</th><th>原因</th>'
-        f'</tr></thead><tbody>{rows}</tbody></table></body></html>'
+        + mapping_table
+        + other_table
+        + "</body></html>"
     )
 
 

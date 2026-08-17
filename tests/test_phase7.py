@@ -260,6 +260,70 @@ def test_new_knowledge_point_candidate_requires_review_packet(tmp_path: Path) ->
         )
 
 
+def test_mapping_review_packet_shows_human_readable_context(tmp_path: Path) -> None:
+    _, _, manifest_path, decision_path = _learning_inputs(tmp_path)
+    decision = LearningAnalysisDecision.model_validate_json(decision_path.read_bytes())
+    mapping = decision.mappings[0].model_copy(update={"requires_review": True})
+    atomic_write_model(
+        decision_path,
+        decision.model_copy(update={"mappings": [mapping]}),
+        model_type=LearningAnalysisDecision,
+    )
+
+    packet = prepare_learning_review(manifest_path, decision_path)
+    html = packet.html_path.read_text(encoding="utf-8")
+
+    assert "知识映射复核" in html
+    assert "题干" in html
+    assert "评分项" in html
+    assert "建议映射" in html
+    assert "Choice selection" in html
+    assert "The rubric directly assesses selecting the expected choice." in html
+
+
+def test_one_rubric_can_split_evidence_across_multiple_points(tmp_path: Path) -> None:
+    _, config, manifest_path, decision_path = _learning_inputs(tmp_path)
+    decision = LearningAnalysisDecision.model_validate_json(decision_path.read_bytes())
+    first_mapping = decision.mappings[0].model_copy(update={"weight": 0.5})
+    target_id = first_mapping.target_id
+    second_point = KnowledgePointProposal(
+        point_id="point-choice-reasoning",
+        name="Choice reasoning",
+        description="Reason about the supplied alternatives.",
+        confidence=0.95,
+        evidence_target_ids=[target_id],
+        human_confirmed=True,
+        human_review_note="Fixture point reviewed by the test author.",
+    )
+    second_mapping = first_mapping.model_copy(
+        update={
+            "mapping_id": "mapping-choice-reasoning",
+            "point_id": second_point.point_id,
+        }
+    )
+    split = decision.model_copy(
+        update={
+            "proposed_points": [*decision.proposed_points, second_point],
+            "mappings": [first_mapping, second_mapping],
+        }
+    )
+    atomic_write_model(decision_path, split, model_type=LearningAnalysisDecision)
+
+    compiled = compile_learning_analysis(
+        manifest_path,
+        decision_path,
+        config,
+        db_path=tmp_path / "missing.sqlite3",
+    )
+
+    assert len(compiled.analysis.evidence) == 2
+    assert {item.point_id for item in compiled.analysis.evidence} == {
+        "point-choice-selection",
+        "point-choice-reasoning",
+    }
+    assert all(item.allocated_points == 0.5 for item in compiled.analysis.evidence)
+
+
 def test_second_exam_uses_exact_catalog_history_for_longitudinal_state(
     tmp_path: Path,
 ) -> None:
