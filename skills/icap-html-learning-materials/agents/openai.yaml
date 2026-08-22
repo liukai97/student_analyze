@@ -1,0 +1,4 @@
+interface:
+  display_name: "ICAP HTML 学习材料"
+  short_description: "基于学习证据制作可离线打开的构建式教学网页"
+  default_prompt: "Use $icap-html-learning-materials to turn the supplied learning evidence into ICAP-guided student materials delivered as manually opened HTML."
